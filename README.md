@@ -105,3 +105,4 @@ Para uso intenso, o plano pago começa em ~$0.37/hora de áudio.
 **Vídeo:** `.mp4` `.mkv` `.avi` `.mov` `.webm` `.flv` `.wmv` `.m4v`  
 **Áudio:** `.mp3` `.wav` `.m4a` `.ogg` `.flac` `.aac`
 # papagaio_transcritor
+# papagaio_transcritor

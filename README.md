@@ -106,3 +106,4 @@ Para uso intenso, o plano pago começa em ~$0.37/hora de áudio.
 **Áudio:** `.mp3` `.wav` `.m4a` `.ogg` `.flac` `.aac`
 # papagaio_transcritor
 # papagaio_transcritor
+# papagaio_transcritor

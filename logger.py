@@ -15,9 +15,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
+try:
+    from .config import APP_DATA_DIR
+except ImportError:
+    from config import APP_DATA_DIR  # type: ignore
+
 
 # ── Diretório de logs ─────────────────────────────────────────────────────────
-LOG_DIR = Path.home() / ".transcritor_logs"
+LOG_DIR = APP_DATA_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Níveis customizados para exibição na GUI ──────────────────────────────────

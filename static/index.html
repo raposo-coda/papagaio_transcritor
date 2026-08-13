@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Papagaio Transcritor</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1 id="app-title">Papagaio Transcritor</h1>
+    <div class="subtitle">Transcricao em lote com Google Gemini</div>
+    <div class="version" id="app-version"></div>
+  </header>
+
+  <main>
+    <div class="col-left">
+      <section class="block">
+        <div class="section-title">Gemini</div>
+        <div class="row">
+          <div class="field">
+            <label for="api-key">API key</label>
+            <input type="password" id="api-key" placeholder="Deixe em branco para manter a atual" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="transcription-model">Modelo de transcricao</label>
+            <input type="text" id="transcription-model" />
+          </div>
+          <div class="field">
+            <label for="summary-model">Modelo de resumo</label>
+            <input type="text" id="summary-model" />
+          </div>
+        </div>
+        <button class="small" id="save-config-btn">Salvar configuracao</button>
+        <div class="api-status" id="api-status"></div>
+        <div class="hint">Gere uma API key gratuita em aistudio.google.com com sua conta Google.</div>
+      </section>
+
+      <section class="block">
+        <div class="section-title">Configuracao geral</div>
+        <div class="row">
+          <div class="field">
+            <label for="lang-select">Idioma</label>
+            <select id="lang-select"></select>
+          </div>
+        </div>
+      </section>
+
+      <section class="block">
+        <div class="section-title">Sessao</div>
+        <div class="field">
+          <label for="title-input">Nome do relatorio consolidado (opcional)</label>
+          <input type="text" id="title-input" />
+        </div>
+        <div class="field">
+          <label for="context-input">Contexto, participantes ou foco da analise (opcional)</label>
+          <textarea id="context-input" rows="4"></textarea>
+        </div>
+      </section>
+
+      <section class="block">
+        <div class="section-title">Arquivos</div>
+        <input type="file" id="file-input" multiple />
+        <button id="add-files-btn">+ Adicionar arquivos</button>
+        <ul id="file-list"></ul>
+      </section>
+
+      <section class="block">
+        <button class="primary" id="start-btn" style="width:100%">Iniciar transcricao</button>
+        <div id="results"></div>
+      </section>
+    </div>
+
+    <div class="col-right">
+      <div class="section-title">Log</div>
+      <div id="log-box"></div>
+      <button class="small" id="clear-log-btn" style="margin-top:8px">Limpar</button>
+    </div>
+  </main>
+
+  <div id="status-bar">Pronto.</div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

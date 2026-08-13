@@ -1,222 +1,204 @@
 """
-pipeline.py — Orquestrador do pipeline e construtores de Markdown
+pipeline.py - Orquestrador do pipeline e construtores de Markdown.
 """
 
-import tempfile
+from __future__ import annotations
+
 from datetime import datetime
 from pathlib import Path
 
-import assemblyai as aai
+try:
+    from .gemini_client import generate_summary, transcribe_path, validate_environment
+    from .logger import log
+    from .models import NormalizedTranscriptResult, PipelineRequest
+    from .utils import (
+        build_cache_key,
+        fmt_time,
+        get_session_dir,
+        load_cache,
+        save_cache,
+        transcript_from_cache,
+        transcript_to_cache,
+    )
+except ImportError:
+    from gemini_client import generate_summary, transcribe_path, validate_environment  # type: ignore
+    from logger import log  # type: ignore
+    from models import NormalizedTranscriptResult, PipelineRequest  # type: ignore
+    from utils import (  # type: ignore
+        build_cache_key,
+        fmt_time,
+        get_session_dir,
+        load_cache,
+        save_cache,
+        transcript_from_cache,
+        transcript_to_cache,
+    )
 
-from .config import VIDEO_EXTS
-from .logger import log
-from .transcriber import (
-    check_ffmpeg, get_session_dir, load_cache, save_cache,
-    process_file, fmt_time,
-)
-from .summarizer import generate_summary
 
-
-# ── Markdown por arquivo ──────────────────────────────────────────────────────
-
-def build_file_markdown(transcript: aai.Transcript, file_path: Path, lang: str) -> str:
-    dur      = fmt_time(transcript.audio_duration or 0)
-    words    = len((transcript.text or "").split())
-    speakers = len({u.speaker for u in (transcript.utterances or [])})
-
+def build_file_markdown(transcript: NormalizedTranscriptResult) -> str:
+    words = len((transcript.text or "").split())
+    speakers = len({item.speaker for item in transcript.utterances})
     lines = [
-        f"# Transcricao: {file_path.name}", "",
-        "---", "",
-        "## Metadados", "",
-        "| Campo | Valor |", "|---|---|",
-        f"| Arquivo | `{file_path.name}` |",
-        f"| Idioma detectado | `{lang}` |",
-        f"| Duracao | {dur} |",
+        f"# Transcricao: {transcript.source_path.name}",
+        "",
+        "---",
+        "",
+        "## Metadados",
+        "",
+        "| Campo | Valor |",
+        "|---|---|",
+        f"| Arquivo | `{transcript.source_path.name}` |",
+        f"| Idioma detectado | `{transcript.language_code or 'n/d'}` |",
+        f"| Duracao | {fmt_time(transcript.audio_duration_seconds)} |",
         f"| Palavras | {words:,} |",
-        f"| Falantes | {speakers} |",
-        "", "---", "",
+        f"| Falantes | {speakers or 0} |",
+        f"| Provider de transcricao | `{transcript.provider_label}` |",
+        f"| Modelo | `{transcript.model or 'default'}` |",
+        "",
+        "---",
+        "",
     ]
 
-    if transcript.chapters:
-        lines += ["## Capitulos", ""]
-        for ch in transcript.chapters:
-            s = fmt_time(ch.start / 1000)
-            e = fmt_time(ch.end / 1000)
-            lines += [f"### `{s}` → `{e}` — {ch.headline}", "", f"> {ch.summary}", ""]
-        lines += ["---", ""]
-
-    lines += ["## Transcricao Completa", ""]
+    lines.extend(["## Transcricao Completa", ""])
     if transcript.utterances:
-        cur = None
-        for utt in transcript.utterances:
-            spk = f"Falante {utt.speaker}"
-            ts  = fmt_time(utt.start / 1000)
-            if spk != cur:
-                cur = spk
-                lines.append(f"\n**{spk}** — `{ts}`\n")
-            lines.append(utt.text)
+        current_speaker = None
+        for item in transcript.utterances:
+            speaker = item.speaker or "Falante"
+            if speaker != current_speaker:
+                current_speaker = speaker
+                lines.append(f"\n**{speaker}** - `{fmt_time(item.start_ms / 1000)}`\n")
+            lines.append(item.text)
     else:
         lines.append(transcript.text or "_Sem texto._")
 
-    lines += ["", "---", ""]
-
-    if transcript.entities:
-        lines += ["## Entidades Detectadas", ""]
-        emap: dict = {}
-        for e in transcript.entities:
-            emap.setdefault(e.entity_type, set()).add(e.text)
-        for et, vals in sorted(emap.items()):
-            lines.append(f"- **{et}**: {', '.join(sorted(vals))}")
-        lines += ["", "---", ""]
-
-    lines.append("_Gerado por TranscritorIA + AssemblyAI_")
+    lines.extend(["", "---", ""])
+    lines.append("_Gerado por Papagaio Transcritor_")
     return "\n".join(lines)
 
-
-# ── Markdown consolidado ──────────────────────────────────────────────────────
 
 def build_consolidated_markdown(
-    transcripts: list,
-    file_paths: list,
+    transcripts: list[NormalizedTranscriptResult],
     summary: str,
-    context_prompt: str,
-    lang: str,
-    title: str = "",
+    request: PipelineRequest,
 ) -> str:
-    now         = datetime.now().strftime("%d/%m/%Y %H:%M")
-    n           = len(transcripts)
-    total_dur   = sum(t.audio_duration or 0 for t in transcripts)
-    total_words = sum(len((t.text or "").split()) for t in transcripts)
-    heading     = title.strip() or f"Relatorio Consolidado — {n} arquivo(s)"
-
+    total_duration = sum(item.audio_duration_seconds or 0 for item in transcripts)
+    total_words = sum(len((item.text or "").split()) for item in transcripts)
+    heading = request.title.strip() or f"Relatorio Consolidado - {len(transcripts)} arquivo(s)"
     lines = [
         f"# {heading}",
-        f"_Gerado em {now}_", "",
-        "---", "",
+        f"_Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}_",
+        "",
+        "---",
+        "",
     ]
 
-    if context_prompt.strip():
-        lines += ["## Contexto Fornecido", "", f"> {context_prompt.strip()}", "", "---", ""]
+    if request.context_prompt.strip():
+        lines.extend(["## Contexto Fornecido", "", f"> {request.context_prompt.strip()}", "", "---", ""])
 
-    lines += [
-        "## Metadados Gerais", "",
-        "| Campo | Valor |", "|---|---|",
-        f"| Arquivos processados | {n} |",
-        f"| Idioma | `{lang}` |",
-        f"| Duracao total | {fmt_time(total_dur)} |",
-        f"| Total de palavras | {total_words:,} |",
-        "", "---", "",
-        "## Arquivos Incluidos", "",
-    ]
-    for i, (t, p) in enumerate(zip(transcripts, file_paths), 1):
-        dur   = fmt_time(t.audio_duration or 0)
-        words = len((t.text or "").split())
-        lines.append(f"{i}. **{p.name}** — {dur}, {words:,} palavras")
+    lines.extend(
+        [
+            "## Metadados Gerais",
+            "",
+            "| Campo | Valor |",
+            "|---|---|",
+            f"| Arquivos processados | {len(transcripts)} |",
+            f"| Idioma solicitado | `{request.lang_code or 'auto'}` |",
+            f"| Duracao total | {fmt_time(total_duration)} |",
+            f"| Total de palavras | {total_words:,} |",
+            f"| Modelo de transcricao | `{request.gemini.transcription_model}` |",
+            f"| Modelo de resumo | `{request.gemini.summary_model}` |",
+            "",
+            "---",
+            "",
+            "## Arquivos Incluidos",
+            "",
+        ]
+    )
+    for index, transcript in enumerate(transcripts, start=1):
+        lines.append(
+            f"{index}. **{transcript.source_path.name}** - {fmt_time(transcript.audio_duration_seconds)}, "
+            f"{len((transcript.text or '').split()):,} palavras"
+        )
 
-    lines += [
-        "", "---", "",
-        "## Analise e Resumo Unificado (IA)", "",
-        summary.strip(), "",
-        "---", "",
-    ]
+    lines.extend(["", "---", "", "## Analise e Resumo Unificado", "", summary.strip(), "", "---", ""])
 
-    if n > 1:
-        lines += ["## Relatorios Individuais", ""]
-        for p in file_paths:
-            lines.append(f"- [{p.name}]({p.stem}.md)")
-        lines += ["", "---", ""]
+    if len(transcripts) > 1:
+        lines.extend(["## Relatorios Individuais", ""])
+        for transcript in transcripts:
+            lines.append(f"- [{transcript.source_path.name}]({transcript.source_path.stem}.md)")
+        lines.extend(["", "---", ""])
 
-    lines.append("_Gerado automaticamente por TranscritorIA + AssemblyAI_")
+    lines.append("_Gerado automaticamente por Papagaio Transcritor_")
     return "\n".join(lines)
 
 
-# ── Orquestrador principal ────────────────────────────────────────────────────
+def _validate_runtime(request: PipelineRequest):
+    errors = validate_environment(request.gemini)
+    if errors:
+        raise RuntimeError("\n".join(errors))
 
-def run_pipeline(
-    file_paths: list,
-    lang_code: str,
-    api_key: str,
-    context_prompt: str,
-    title: str,
-    output_dir: Path,
-    on_done,
-    on_error,
-    provider_id: str = "lemur",
-    ai_model: str = "",
-    ai_key: str = "",
-    ai_url: str = "",
-):
-    """
-    Orquestra todo o pipeline em uma thread separada:
-      1. Verifica ffmpeg
-      2. Cria/reutiliza pasta de sessão
-      3. Para cada arquivo: checa cache → extrai áudio → transcreve → salva MD
-      4. Gera resumo consolidado via provider de IA
-      5. Salva _consolidado.md
-    """
+
+def _process_file(
+    file_path: Path,
+    idx: int,
+    total: int,
+    request: PipelineRequest,
+    cache: dict,
+) -> NormalizedTranscriptResult:
+    log.info(f"\n{'=' * 50}")
+    log.info(f"Arquivo [{idx}/{total}]: {file_path.name}")
+    log.info(f"{'=' * 50}")
+
+    cache_key = build_cache_key(file_path, request.gemini.transcription_model)
+    cache_record = cache.get(cache_key)
+    if cache_record:
+        log.ok(f"  [cache] Reutilizando transcricao existente para {file_path.name}")
+        return transcript_from_cache(cache_record, file_path)
+
+    return transcribe_path(file_path, request.lang_code, request.gemini)
+
+
+def run_pipeline(request: PipelineRequest, on_done, on_error):
     try:
-        log.start_session(title or "sessao")
-        log.info(f"Pipeline iniciado: {len(file_paths)} arquivo(s)")
-        log.info(f"Provider IA: {provider_id} | Modelo: {ai_model or 'default'}")
-        log.info(f"Pasta de saida: {output_dir}")
+        log.start_session(request.title or "sessao")
+        log.info(f"Pipeline iniciado: {len(request.file_paths)} arquivo(s)")
+        log.info(f"Transcricao: gemini | modelo={request.gemini.transcription_model}")
+        log.info(f"Resumo: gemini | modelo={request.gemini.summary_model}")
+        log.info(f"Pasta de saida: {request.output_dir}")
 
-        if not check_ffmpeg():
-            raise RuntimeError(
-                "ffmpeg nao encontrado.\n"
-                "Ubuntu/Debian:  sudo apt install ffmpeg\n"
-                "macOS:          brew install ffmpeg\n"
-                "Windows:        https://ffmpeg.org/download.html"
-            )
+        _validate_runtime(request)
 
-        session_dir = get_session_dir(output_dir, title or "sessao")
-        cache       = load_cache(session_dir)
+        session_dir = get_session_dir(request.output_dir, request.title or "sessao")
+        cache = load_cache(session_dir)
+        transcripts: list[NormalizedTranscriptResult] = []
 
-        existing = [f for f in cache if f in {fp.stem for fp in file_paths}]
-        if existing:
-            log.info(f"Cache: {len(existing)} arquivo(s) ja transcritos: {existing}")
+        for index, file_path in enumerate(request.file_paths, start=1):
+            transcript = _process_file(file_path, index, len(request.file_paths), request, cache)
+            transcripts.append(transcript)
 
-        transcripts = []
-        n = len(file_paths)
+            md_path = session_dir / f"{file_path.stem}.md"
+            md_path.write_text(build_file_markdown(transcript), encoding="utf-8")
+            log.ok(f"  [salvo] {md_path.name}")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            for idx, fp in enumerate(file_paths, 1):
-                transcript = process_file(fp, idx, n, api_key, session_dir, cache, tmpdir)
-                transcripts.append(transcript)
+            cache_key = build_cache_key(file_path, request.gemini.transcription_model)
+            cache[cache_key] = transcript_to_cache(transcript)
+            save_cache(session_dir, cache)
 
-                # Salvar MD individual
-                md_path    = session_dir / (fp.stem + ".md")
-                md_content = build_file_markdown(transcript, fp, lang_code)
-                md_path.write_text(md_content, encoding="utf-8")
-                log.ok(f"  [salvo] {md_path.name}")
-
-                # Atualizar cache
-                cache[fp.stem] = transcript.id
-                save_cache(session_dir, cache)
-                log.debug(f"  [cache] id={transcript.id} salvo para '{fp.stem}'")
-
-        # Resumo consolidado
-        log.info(f"\n{'='*50}")
+        log.info(f"\n{'=' * 50}")
         log.info("Gerando resumo consolidado...")
-        summary = generate_summary(
-            transcripts, context_prompt,
-            provider_id=provider_id,
-            ai_model=ai_model,
-            ai_key=ai_key,
-            ai_url=ai_url,
-        )
+        summary = generate_summary(transcripts, request.context_prompt, request.gemini)
 
-        consolidated = build_consolidated_markdown(
-            transcripts, file_paths, summary, context_prompt, lang_code, title
+        consolidated_path = session_dir / "_consolidado.md"
+        consolidated_path.write_text(
+            build_consolidated_markdown(transcripts, summary, request),
+            encoding="utf-8",
         )
-        out = session_dir / "_consolidado.md"
-        out.write_text(consolidated, encoding="utf-8")
-        log.ok(f"Consolidado salvo: {out}")
+        log.ok(f"Consolidado salvo: {consolidated_path}")
 
         if log.log_file:
             log.info(f"Log completo em: {log.log_file}")
 
-        on_done(session_dir, out)
-
+        on_done(session_dir, consolidated_path)
     except Exception as exc:
         log.exception("Pipeline falhou", exc=exc)
         on_error(str(exc))

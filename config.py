@@ -1,89 +1,71 @@
 """
-config.py — Constantes, configuração e persistência
+config.py - Constantes e persistencia.
 """
 
+from __future__ import annotations
+
 import json
+import os
 from pathlib import Path
 
-# ── App ───────────────────────────────────────────────────────────────────────
-APP_NAME    = "TranscritorIA"
-APP_VERSION = "2.1"
-CONFIG_FILE = Path.home() / ".transcritor_config.json"
+APP_NAME = "Papagaio Transcritor"
+APP_VERSION = "4.0"
+PACKAGE_NAME = "papagaio_transcritor"
 
-# ── Arquivos suportados ───────────────────────────────────────────────────────
+
+def get_app_data_dir() -> Path:
+    env_override = os.environ.get("PAPAGAIO_DATA_DIR")
+    candidates = []
+    if env_override:
+        candidates.append(Path(env_override))
+    if os.environ.get("LOCALAPPDATA"):
+        candidates.append(Path(os.environ["LOCALAPPDATA"]) / "PapagaioTranscritor")
+    if os.environ.get("APPDATA"):
+        candidates.append(Path(os.environ["APPDATA"]) / "PapagaioTranscritor")
+    candidates.append(Path.cwd() / ".papagaio_transcritor_data")
+
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except Exception:
+            continue
+    return Path.cwd()
+
+
+def get_output_dir() -> Path:
+    env_override = os.environ.get("PAPAGAIO_OUTPUT_DIR")
+    output_dir = Path(env_override) if env_override else (Path.cwd() / "output")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+APP_DATA_DIR = get_app_data_dir()
+CONFIG_FILE = APP_DATA_DIR / "config.json"
+CACHE_FILE = "_cache.json"
+OUTPUT_DIR = get_output_dir()
+
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".wmv", ".m4v"}
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac"}
 SUPPORTED_EXTS = VIDEO_EXTS | AUDIO_EXTS
 
-# ── Idiomas ───────────────────────────────────────────────────────────────────
 LANGS = {
-    "Português (pt)": "pt",
-    "English (en)":   "en",
-    "Español (es)":   "es",
-    "Français (fr)":  "fr",
-    "Deutsch (de)":   "de",
-    "Italiano (it)":  "it",
-    "日本語 (ja)":     "ja",
-    "한국어 (ko)":     "ko",
-    "中文 (zh)":       "zh",
+    "Portugues (pt)": "pt",
+    "English (en)": "en",
+    "Espanol (es)": "es",
+    "Francais (fr)": "fr",
+    "Deutsch (de)": "de",
+    "Italiano (it)": "it",
+    "Japanese (ja)": "ja",
+    "Korean (ko)": "ko",
+    "Chinese (zh)": "zh",
 }
 
-# ── Cores da UI ───────────────────────────────────────────────────────────────
-COLORS = {
-    "bg":       "#1e1e2e",
-    "surface":  "#2a2a3e",
-    "border":   "#3d3d5c",
-    "accent":   "#7c6af7",
-    "accent2":  "#5a9cf5",
-    "success":  "#4caf82",
-    "warning":  "#f5a623",
-    "error":    "#f56060",
-    "text":     "#cdd6f4",
-    "subtext":  "#a6adc8",
-    "muted":    "#6c7086",
-}
+GEMINI_DEFAULT_TRANSCRIPTION_MODEL = "gemini-flash-latest"
+GEMINI_DEFAULT_SUMMARY_MODEL = "gemini-flash-latest"
 
-# ── Provedores de IA ──────────────────────────────────────────────────────────
-PROVIDERS = {
-    "AssemblyAI LeMUR": {
-        "id":            "lemur",
-        "needs_key":     False,
-        "needs_url":     False,
-        "default_model": "(automático)",
-        "hint":          "Usa a mesma key da AssemblyAI. Grátis no plano atual.",
-    },
-    "Anthropic (Claude)": {
-        "id":            "anthropic",
-        "needs_key":     True,
-        "needs_url":     False,
-        "default_model": "claude-haiku-4-5",
-        "hint":          "pip install anthropic  |  console.anthropic.com",
-    },
-    "OpenAI (ChatGPT)": {
-        "id":            "openai",
-        "needs_key":     True,
-        "needs_url":     False,
-        "default_model": "gpt-4o-mini",
-        "hint":          "pip install openai  |  platform.openai.com",
-    },
-    "Ollama (local)": {
-        "id":            "ollama",
-        "needs_key":     False,
-        "needs_url":     True,
-        "default_model": "llama3",
-        "hint":          "Requer Ollama rodando localmente  |  ollama.com",
-    },
-    "OpenAI-compatible": {
-        "id":            "openai_compat",
-        "needs_key":     True,
-        "needs_url":     True,
-        "default_model": "mistral",
-        "hint":          "Qualquer endpoint /v1/chat/completions (Groq, Together, LM Studio...)",
-    },
-}
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024  # limite do File API do Gemini por arquivo
 
-
-# ── Persistência ──────────────────────────────────────────────────────────────
 
 def load_config() -> dict:
     if CONFIG_FILE.exists():

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Entry point do pacote papagaio_transcritor.
+Launcher local para subir o servidor web a partir da raiz do repositorio.
+Uso:
+    python main.py
 """
 
 from __future__ import annotations
@@ -9,7 +11,7 @@ import os
 
 import uvicorn
 
-from .server import app
+from server import app
 
 
 def main():

@@ -20,6 +20,46 @@ except ImportError:
 
 _UPLOAD_POLL_SECONDS = 2
 _UPLOAD_TIMEOUT_SECONDS = 600
+_RETRY_ATTEMPTS = 4
+_RETRY_BASE_DELAY_SECONDS = 5
+
+
+def _call_with_retry(fn, label: str):
+    from google.genai import errors
+
+    for attempt in range(1, _RETRY_ATTEMPTS + 1):
+        try:
+            return fn()
+        except errors.ServerError as exc:
+            if attempt == _RETRY_ATTEMPTS:
+                raise
+            delay = _RETRY_BASE_DELAY_SECONDS * attempt
+            log.warning(f"  [gemini] {label} indisponivel (tentativa {attempt}/{_RETRY_ATTEMPTS}): {exc}. Tentando de novo em {delay}s.")
+            time.sleep(delay)
+
+_MIME_TYPES = {
+    ".mp4": "video/mp4",
+    ".m4v": "video/mp4",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+    ".flv": "video/x-flv",
+    ".wmv": "video/x-ms-wmv",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+    ".aac": "audio/aac",
+}
+
+
+def _guess_mime_type(file_path: Path) -> str:
+    mime_type = _MIME_TYPES.get(file_path.suffix.lower())
+    if not mime_type:
+        raise RuntimeError(f"Extensao sem mime type mapeado: {file_path.suffix}")
+    return mime_type
 
 _TRANSCRIPTION_SCHEMA = {
     "type": "object",
@@ -62,9 +102,15 @@ def _client(config: GeminiConfig):
     return genai.Client(api_key=config.api_key)
 
 
-def _upload_and_wait(client, file_path: Path):
+def _upload_and_wait(client, file_path: Path, mime_type: str | None = None):
+    from google.genai import types
+
     log.info(f"  [gemini] Enviando arquivo: {file_path.name}")
-    uploaded = client.files.upload(file=str(file_path))
+    mime_type = mime_type or _guess_mime_type(file_path)
+    uploaded = client.files.upload(
+        file=str(file_path),
+        config=types.UploadFileConfig(mime_type=mime_type),
+    )
 
     waited = 0
     while getattr(uploaded.state, "name", uploaded.state) == "PROCESSING":
@@ -101,22 +147,25 @@ def _transcription_prompt(lang_code: str) -> str:
     )
 
 
-def transcribe_path(file_path: Path, lang_code: str, config: GeminiConfig) -> NormalizedTranscriptResult:
+def transcribe_path(file_path: Path, lang_code: str, config: GeminiConfig, mime_type: str | None = None) -> NormalizedTranscriptResult:
     from google.genai import types
 
     client = _client(config)
-    uploaded = _upload_and_wait(client, file_path)
+    uploaded = _upload_and_wait(client, file_path, mime_type=mime_type)
 
     model = config.transcription_model or GEMINI_DEFAULT_TRANSCRIPTION_MODEL
     log.info(f"  [gemini] Transcrevendo com modelo: {model}")
 
-    response = client.models.generate_content(
-        model=model,
-        contents=[uploaded, _transcription_prompt(lang_code)],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=_TRANSCRIPTION_SCHEMA,
+    response = _call_with_retry(
+        lambda: client.models.generate_content(
+            model=model,
+            contents=[uploaded, _transcription_prompt(lang_code)],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=_TRANSCRIPTION_SCHEMA,
+            ),
         ),
+        label="Transcricao",
     )
 
     data = json.loads(response.text)
@@ -193,7 +242,10 @@ def generate_summary(transcripts: list[NormalizedTranscriptResult], context_prom
 
     try:
         client = _client(config)
-        response = client.models.generate_content(model=model, contents=prompt)
+        response = _call_with_retry(
+            lambda: client.models.generate_content(model=model, contents=prompt),
+            label="Resumo",
+        )
         text = (response.text or "").strip()
         if text:
             log.ok("  [gemini] Resumo gerado com sucesso")

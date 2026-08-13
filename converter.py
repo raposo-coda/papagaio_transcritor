@@ -1,0 +1,77 @@
+"""
+converter.py - Normaliza qualquer audio/video suportado para .mp4 via ffmpeg
+antes do envio ao Gemini.
+"""
+
+from __future__ import annotations
+
+import shutil
+import subprocess
+from pathlib import Path
+
+try:
+    from .config import VIDEO_EXTS
+    from .logger import log
+except ImportError:
+    from config import VIDEO_EXTS  # type: ignore
+    from logger import log  # type: ignore
+
+
+def get_ffmpeg_command() -> str | None:
+    return shutil.which("ffmpeg")
+
+
+def check_ffmpeg() -> bool:
+    ffmpeg_command = get_ffmpeg_command()
+    if not ffmpeg_command:
+        return False
+    try:
+        subprocess.run(
+            [ffmpeg_command, "-version"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
+def convert_to_mp4(source_path: Path, out_dir: Path) -> tuple[Path, str]:
+    """Converte para .mp4 e retorna (caminho, mime_type). O mime type reflete o
+    conteudo real (audio/mp4 quando a origem e so audio) para nao confundir o
+    processamento de arquivos do Gemini, que valida o mime declarado contra o
+    conteudo."""
+    ffmpeg_command = get_ffmpeg_command()
+    if not ffmpeg_command:
+        raise RuntimeError("ffmpeg nao encontrado. Necessario para normalizar o arquivo antes do envio ao Gemini.")
+
+    out_path = out_dir / f"{source_path.stem}.mp4"
+    is_video = source_path.suffix.lower() in VIDEO_EXTS
+
+    log.info(f"  [ffmpeg] Convertendo para mp4: {source_path.name}")
+    if is_video:
+        command = [
+            ffmpeg_command, "-y", "-i", str(source_path),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "192k",
+            "-movflags", "+faststart",
+            str(out_path),
+        ]
+        mime_type = "video/mp4"
+    else:
+        command = [
+            ffmpeg_command, "-y", "-i", str(source_path),
+            "-vn", "-c:a", "aac", "-b:a", "192k",
+            str(out_path),
+        ]
+        mime_type = "audio/mp4"
+
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        log.error(f"  [ffmpeg] stderr:\n{result.stderr}")
+        raise RuntimeError(f"ffmpeg falhou ao converter {source_path.name} (code {result.returncode}): {result.stderr[-400:]}")
+
+    mb_size = out_path.stat().st_size / 1_048_576
+    log.ok(f"  [ffmpeg] Convertido: {out_path.name} ({mb_size:.1f} MB)")
+    return out_path, mime_type

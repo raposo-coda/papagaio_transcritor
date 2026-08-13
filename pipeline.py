@@ -4,10 +4,12 @@ pipeline.py - Orquestrador do pipeline e construtores de Markdown.
 
 from __future__ import annotations
 
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
 try:
+    from .converter import check_ffmpeg, convert_to_mp4
     from .gemini_client import generate_summary, transcribe_path, validate_environment
     from .logger import log
     from .models import NormalizedTranscriptResult, PipelineRequest
@@ -21,6 +23,7 @@ try:
         transcript_to_cache,
     )
 except ImportError:
+    from converter import check_ffmpeg, convert_to_mp4  # type: ignore
     from gemini_client import generate_summary, transcribe_path, validate_environment  # type: ignore
     from logger import log  # type: ignore
     from models import NormalizedTranscriptResult, PipelineRequest  # type: ignore
@@ -134,6 +137,8 @@ def build_consolidated_markdown(
 
 def _validate_runtime(request: PipelineRequest):
     errors = validate_environment(request.gemini)
+    if not check_ffmpeg():
+        errors.append("ffmpeg nao encontrado. Necessario para normalizar os arquivos antes do envio ao Gemini.")
     if errors:
         raise RuntimeError("\n".join(errors))
 
@@ -144,6 +149,7 @@ def _process_file(
     total: int,
     request: PipelineRequest,
     cache: dict,
+    tmpdir: Path,
 ) -> NormalizedTranscriptResult:
     log.info(f"\n{'=' * 50}")
     log.info(f"Arquivo [{idx}/{total}]: {file_path.name}")
@@ -155,7 +161,10 @@ def _process_file(
         log.ok(f"  [cache] Reutilizando transcricao existente para {file_path.name}")
         return transcript_from_cache(cache_record, file_path)
 
-    return transcribe_path(file_path, request.lang_code, request.gemini)
+    converted_path, mime_type = convert_to_mp4(file_path, tmpdir)
+    transcript = transcribe_path(converted_path, request.lang_code, request.gemini, mime_type=mime_type)
+    transcript.source_path = file_path
+    return transcript
 
 
 def run_pipeline(request: PipelineRequest, on_done, on_error):
@@ -172,17 +181,18 @@ def run_pipeline(request: PipelineRequest, on_done, on_error):
         cache = load_cache(session_dir)
         transcripts: list[NormalizedTranscriptResult] = []
 
-        for index, file_path in enumerate(request.file_paths, start=1):
-            transcript = _process_file(file_path, index, len(request.file_paths), request, cache)
-            transcripts.append(transcript)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for index, file_path in enumerate(request.file_paths, start=1):
+                transcript = _process_file(file_path, index, len(request.file_paths), request, cache, Path(tmpdir))
+                transcripts.append(transcript)
 
-            md_path = session_dir / f"{file_path.stem}.md"
-            md_path.write_text(build_file_markdown(transcript), encoding="utf-8")
-            log.ok(f"  [salvo] {md_path.name}")
+                md_path = session_dir / f"{file_path.stem}.md"
+                md_path.write_text(build_file_markdown(transcript), encoding="utf-8")
+                log.ok(f"  [salvo] {md_path.name}")
 
-            cache_key = build_cache_key(file_path, request.gemini.transcription_model)
-            cache[cache_key] = transcript_to_cache(transcript)
-            save_cache(session_dir, cache)
+                cache_key = build_cache_key(file_path, request.gemini.transcription_model)
+                cache[cache_key] = transcript_to_cache(transcript)
+                save_cache(session_dir, cache)
 
         log.info(f"\n{'=' * 50}")
         log.info("Gerando resumo consolidado...")

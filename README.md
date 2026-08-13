@@ -6,7 +6,8 @@ gerar relatorios em Markdown e resumir o conteudo. Roda localmente via Docker.
 ## O que o sistema faz
 
 - Transcreve 1 ou varios arquivos de audio/video enviados pelo navegador.
-- Usa o Gemini (upload direto do arquivo, sem precisar de ffmpeg) para transcrever com identificacao de falantes.
+- Normaliza qualquer formato suportado para `.mp4` via ffmpeg antes do envio (evita erros de mime type no Gemini).
+- Usa o Gemini para transcrever com identificacao de falantes.
 - Usa o Gemini para gerar um resumo/analise consolidado do conteudo.
 - Gera um `.md` por arquivo e um `_consolidado.md` da sessao, disponiveis para download pela interface.
 - Mantem cache local por arquivo (evita retranscrever o mesmo arquivo).
@@ -26,6 +27,8 @@ Depois abra http://localhost:8000 no navegador, cole sua API key do Gemini na se
 Os arquivos gerados ficam disponiveis em `./output` na maquina host (mapeado via volume).
 
 ## Rodando sem Docker (desenvolvimento)
+
+Requer `ffmpeg` no PATH (usado para normalizar os arquivos antes do envio ao Gemini).
 
 ```bash
 pip install -r requirements.txt

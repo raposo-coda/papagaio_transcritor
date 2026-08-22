@@ -16,14 +16,36 @@
     el("app-version").textContent = `v${meta.app_version}`;
     state.langs = meta.langs;
 
-    const select = el("lang-select");
+    fillSelect(el("lang-select"), Object.keys(meta.langs));
+    fillSelect(el("whisper-model"), meta.whisper_models || []);
+    fillSelect(el("whisper-device"), meta.whisper_devices || []);
+    fillSelect(
+      el("provider-select"),
+      Object.keys(meta.providers || {}),
+      (key) => meta.providers[key]
+    );
+  }
+
+  function fillSelect(select, values, labelFor) {
     select.innerHTML = "";
-    Object.keys(meta.langs).forEach((label) => {
+    values.forEach((value) => {
       const opt = document.createElement("option");
-      opt.value = label;
-      opt.textContent = label;
+      opt.value = value;
+      opt.textContent = labelFor ? labelFor(value) : value;
       select.appendChild(opt);
     });
+  }
+
+  function applyProviderVisibility() {
+    const isWhisper = el("provider-select").value === "whisper";
+    el("whisper-block").style.display = isWhisper ? "" : "none";
+    el("transcription-model-field").style.display = isWhisper ? "none" : "";
+    el("provider-hint").textContent = isWhisper
+      ? "Transcricao 100% local (nada sai da maquina). O resumo consolidado ainda usa o Gemini se houver API key; sem ela, cai num resumo local simples."
+      : "Transcricao na nuvem via Gemini. Requer API key e ffmpeg instalado.";
+    el("gemini-hint").textContent = isWhisper
+      ? "Com o Whisper selecionado, a API key e usada apenas para o resumo consolidado (opcional)."
+      : "Gere uma API key gratuita em aistudio.google.com com sua conta Google.";
   }
 
   async function loadConfig() {
@@ -34,6 +56,13 @@
     if (state.langs[cfg.lang]) {
       el("lang-select").value = cfg.lang;
     }
+    el("provider-select").value = cfg.provider || "gemini";
+    el("whisper-model").value = cfg.whisper_model || "small";
+    el("whisper-device").value = cfg.whisper_device || "auto";
+    el("whisper-diarization").checked = !!cfg.whisper_diarization;
+    el("whisper-num-speakers").value = cfg.whisper_num_speakers || 0;
+    applyProviderVisibility();
+
     const status = el("api-status");
     if (cfg.has_api_key) {
       status.textContent = "API key configurada.";
@@ -42,6 +71,15 @@
       status.textContent = "Nenhuma API key salva ainda.";
       status.className = "api-status warn";
     }
+
+    const whisperStatus = el("whisper-status");
+    if (cfg.whisper_ready) {
+      whisperStatus.textContent = `Whisper pronto (dispositivo: ${cfg.resolved_device}).`;
+      whisperStatus.className = "api-status ok";
+    } else {
+      whisperStatus.textContent = (cfg.whisper_issues || []).join(" ");
+      whisperStatus.className = "api-status warn";
+    }
   }
 
   async function saveConfig() {
@@ -49,10 +87,19 @@
       transcription_model: el("transcription-model").value.trim(),
       summary_model: el("summary-model").value.trim(),
       lang: el("lang-select").value,
+      provider: el("provider-select").value,
+      whisper_model: el("whisper-model").value,
+      whisper_device: el("whisper-device").value,
+      whisper_diarization: el("whisper-diarization").checked,
+      whisper_num_speakers: parseInt(el("whisper-num-speakers").value, 10) || 0,
     };
     const apiKey = el("api-key").value.trim();
     if (apiKey) {
       payload.gemini_api_key = apiKey;
+    }
+    const hfToken = el("hf-token").value.trim();
+    if (hfToken) {
+      payload.hf_token = hfToken;
     }
     await fetch("/api/config", {
       method: "POST",
@@ -60,6 +107,7 @@
       body: JSON.stringify(payload),
     });
     el("api-key").value = "";
+    el("hf-token").value = "";
     setStatus("Configuracao salva.");
     loadConfig();
   }
@@ -189,6 +237,7 @@
     event.target.value = "";
   });
   el("save-config-btn").addEventListener("click", saveConfig);
+  el("provider-select").addEventListener("change", applyProviderVisibility);
   el("start-btn").addEventListener("click", startJob);
   el("clear-log-btn").addEventListener("click", () => {
     el("log-box").innerHTML = "";

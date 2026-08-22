@@ -9,13 +9,58 @@
 <body>
   <header>
     <h1 id="app-title">Papagaio Transcritor</h1>
-    <div class="subtitle">Transcricao em lote com Google Gemini</div>
+    <div class="subtitle">Transcricao em lote com Gemini ou Whisper local</div>
     <div class="version" id="app-version"></div>
   </header>
 
   <main>
     <div class="col-left">
       <section class="block">
+        <div class="section-title">Motor de transcricao</div>
+        <div class="row">
+          <div class="field">
+            <label for="provider-select">Provider</label>
+            <select id="provider-select"></select>
+          </div>
+        </div>
+        <div class="hint" id="provider-hint"></div>
+      </section>
+
+      <section class="block" id="whisper-block">
+        <div class="section-title">Whisper local</div>
+        <div class="row">
+          <div class="field">
+            <label for="whisper-model">Modelo</label>
+            <select id="whisper-model"></select>
+          </div>
+          <div class="field">
+            <label for="whisper-device">Dispositivo</label>
+            <select id="whisper-device"></select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="whisper-diarization">
+              <input type="checkbox" id="whisper-diarization" /> Identificar falantes (pyannote)
+            </label>
+          </div>
+          <div class="field">
+            <label for="whisper-num-speakers">Numero de falantes (0 = automatico)</label>
+            <input type="number" id="whisper-num-speakers" min="0" step="1" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="hf-token">Token HuggingFace (necessario para diarizacao)</label>
+          <input type="password" id="hf-token" placeholder="Deixe em branco para manter o atual" />
+        </div>
+        <div class="api-status" id="whisper-status"></div>
+        <div class="hint">
+          Gere o token em huggingface.co/settings/tokens e aceite os termos em
+          huggingface.co/pyannote/speaker-diarization-3.1. Os pesos sao baixados no primeiro uso.
+        </div>
+      </section>
+
+      <section class="block" id="gemini-block">
         <div class="section-title">Gemini</div>
         <div class="row">
           <div class="field">
@@ -24,7 +69,7 @@
           </div>
         </div>
         <div class="row">
-          <div class="field">
+          <div class="field" id="transcription-model-field">
             <label for="transcription-model">Modelo de transcricao</label>
             <input type="text" id="transcription-model" />
           </div>
@@ -35,7 +80,7 @@
         </div>
         <button class="small" id="save-config-btn">Salvar configuracao</button>
         <div class="api-status" id="api-status"></div>
-        <div class="hint">Gere uma API key gratuita em aistudio.google.com com sua conta Google.</div>
+        <div class="hint" id="gemini-hint">Gere uma API key gratuita em aistudio.google.com com sua conta Google.</div>
       </section>
 
       <section class="block">

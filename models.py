@@ -54,6 +54,18 @@ class GeminiConfig:
 
 
 @dataclass
+class WhisperConfig:
+    model: str = ""
+    device: str = "auto"  # auto | cpu | cuda
+    compute_type: str = ""  # vazio = int8 na cpu, float16 na gpu
+    diarization: bool = True
+    hf_token: str = ""
+    num_speakers: int = 0  # 0 = deixar o pyannote decidir
+    min_speakers: int = 0
+    max_speakers: int = 0
+
+
+@dataclass
 class PipelineRequest:
     file_paths: list[Path]
     lang_code: str
@@ -61,3 +73,5 @@ class PipelineRequest:
     title: str
     context_prompt: str
     gemini: GeminiConfig
+    provider: str = "gemini"
+    whisper: WhisperConfig = field(default_factory=WhisperConfig)

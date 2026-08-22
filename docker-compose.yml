@@ -1,9 +1,15 @@
 services:
   papagaio-transcritor:
-    build: .
+    build:
+      context: .
+      args:
+        # true = inclui faster-whisper + pyannote na imagem (~2 GB a mais)
+        INSTALL_WHISPER: "${INSTALL_WHISPER:-false}"
     ports:
       - "8000:8000"
     volumes:
       - ./output:/app/output
+      # ./data guarda config.json e o cache de pesos do Whisper/pyannote (HF_HOME),
+      # entao os modelos so sao baixados uma vez.
       - ./data:/app/data
     restart: unless-stopped

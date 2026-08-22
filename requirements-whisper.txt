@@ -1,0 +1,12 @@
+# Dependencias opcionais do provider "Whisper local".
+# Instale so se for usar transcricao offline:  pip install -r requirements-whisper.txt
+#
+# O indice extra abaixo garante o torch CPU-only (~200 MB em vez de ~2.5 GB da build CUDA).
+# Se voce tem GPU NVIDIA e quer acelerar, remova a linha e instale o torch com CUDA
+# seguindo pytorch.org/get-started/locally.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+faster-whisper>=1.0.0
+torch>=2.0
+torchaudio>=2.0
+pyannote.audio>=3.1

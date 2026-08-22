@@ -57,11 +57,11 @@ def save_cache(session_dir: Path, cache: dict):
         log.warning(f"Falha ao salvar cache: {exc}")
 
 
-def build_cache_key(file_path: Path, model: str) -> str:
+def build_cache_key(file_path: Path, provider: str, model: str) -> str:
     stat = file_path.stat()
     basis = "|".join(
         [
-            "gemini",
+            provider,
             model,
             str(file_path.resolve()).lower(),
             str(stat.st_size),

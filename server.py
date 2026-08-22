@@ -15,36 +15,50 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 try:
+    from . import whisper_client
     from .config import (
         APP_NAME,
         APP_VERSION,
+        DEFAULT_PROVIDER,
         GEMINI_DEFAULT_SUMMARY_MODEL,
         GEMINI_DEFAULT_TRANSCRIPTION_MODEL,
         LANGS,
         OUTPUT_DIR,
+        PROVIDER_WHISPER,
+        PROVIDERS,
         SUPPORTED_EXTS,
+        WHISPER_DEFAULT_DEVICE,
+        WHISPER_DEFAULT_MODEL,
+        WHISPER_MODELS,
         load_config,
         save_config,
     )
     from .gemini_client import validate_environment
     from .logger import log
-    from .models import GeminiConfig, PipelineRequest
+    from .models import GeminiConfig, PipelineRequest, WhisperConfig
     from .pipeline import run_pipeline
 except ImportError:
+    import whisper_client  # type: ignore
     from config import (  # type: ignore
         APP_NAME,
         APP_VERSION,
+        DEFAULT_PROVIDER,
         GEMINI_DEFAULT_SUMMARY_MODEL,
         GEMINI_DEFAULT_TRANSCRIPTION_MODEL,
         LANGS,
         OUTPUT_DIR,
+        PROVIDER_WHISPER,
+        PROVIDERS,
         SUPPORTED_EXTS,
+        WHISPER_DEFAULT_DEVICE,
+        WHISPER_DEFAULT_MODEL,
+        WHISPER_MODELS,
         load_config,
         save_config,
     )
     from gemini_client import validate_environment  # type: ignore
     from logger import log  # type: ignore
-    from models import GeminiConfig, PipelineRequest  # type: ignore
+    from models import GeminiConfig, PipelineRequest, WhisperConfig  # type: ignore
     from pipeline import run_pipeline  # type: ignore
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -67,6 +81,24 @@ def _gemini_config_from_saved(cfg: dict) -> GeminiConfig:
     )
 
 
+def _whisper_config_from_saved(cfg: dict) -> WhisperConfig:
+    return WhisperConfig(
+        model=cfg.get("whisper_model") or WHISPER_DEFAULT_MODEL,
+        device=cfg.get("whisper_device") or WHISPER_DEFAULT_DEVICE,
+        compute_type=cfg.get("whisper_compute_type", ""),
+        diarization=bool(cfg.get("whisper_diarization", True)),
+        hf_token=cfg.get("hf_token", ""),
+        num_speakers=int(cfg.get("whisper_num_speakers") or 0),
+        min_speakers=int(cfg.get("whisper_min_speakers") or 0),
+        max_speakers=int(cfg.get("whisper_max_speakers") or 0),
+    )
+
+
+def _provider_from_saved(cfg: dict) -> str:
+    provider = cfg.get("provider") or DEFAULT_PROVIDER
+    return provider if provider in PROVIDERS else DEFAULT_PROVIDER
+
+
 @app.get("/api/meta")
 def get_meta():
     return {
@@ -74,17 +106,31 @@ def get_meta():
         "app_version": APP_VERSION,
         "langs": LANGS,
         "supported_exts": sorted(SUPPORTED_EXTS),
+        "providers": PROVIDERS,
+        "whisper_models": WHISPER_MODELS,
+        "whisper_devices": ["auto", "cpu", "cuda"],
     }
 
 
 @app.get("/api/config")
 def get_config():
     cfg = load_config()
+    whisper = _whisper_config_from_saved(cfg)
+    whisper_issues = whisper_client.validate_environment(whisper)
     return {
         "has_api_key": bool(cfg.get("gemini_api_key")),
         "transcription_model": cfg.get("gemini_transcription_model") or GEMINI_DEFAULT_TRANSCRIPTION_MODEL,
         "summary_model": cfg.get("gemini_summary_model") or GEMINI_DEFAULT_SUMMARY_MODEL,
         "lang": cfg.get("lang", "Portugues (pt)"),
+        "provider": _provider_from_saved(cfg),
+        "whisper_model": whisper.model,
+        "whisper_device": whisper.device,
+        "whisper_diarization": whisper.diarization,
+        "whisper_num_speakers": whisper.num_speakers,
+        "has_hf_token": bool(whisper.hf_token),
+        "whisper_ready": not whisper_issues,
+        "whisper_issues": whisper_issues,
+        "resolved_device": whisper_client.resolve_device(whisper.device),
     }
 
 
@@ -93,12 +139,27 @@ def set_config(payload: dict):
     cfg = load_config()
     if payload.get("gemini_api_key"):
         cfg["gemini_api_key"] = payload["gemini_api_key"].strip()
+    if payload.get("hf_token"):
+        cfg["hf_token"] = payload["hf_token"].strip()
     if "transcription_model" in payload:
         cfg["gemini_transcription_model"] = (payload["transcription_model"] or "").strip()
     if "summary_model" in payload:
         cfg["gemini_summary_model"] = (payload["summary_model"] or "").strip()
     if "lang" in payload:
         cfg["lang"] = payload["lang"]
+    if payload.get("provider") in PROVIDERS:
+        cfg["provider"] = payload["provider"]
+    if "whisper_model" in payload:
+        cfg["whisper_model"] = (payload["whisper_model"] or "").strip()
+    if "whisper_device" in payload:
+        cfg["whisper_device"] = (payload["whisper_device"] or "").strip()
+    if "whisper_diarization" in payload:
+        cfg["whisper_diarization"] = bool(payload["whisper_diarization"])
+    if "whisper_num_speakers" in payload:
+        try:
+            cfg["whisper_num_speakers"] = max(0, int(payload["whisper_num_speakers"] or 0))
+        except (TypeError, ValueError):
+            cfg["whisper_num_speakers"] = 0
     save_config(cfg)
     return {"ok": True}
 
@@ -117,7 +178,13 @@ async def create_job(
 
     cfg = load_config()
     gemini_config = _gemini_config_from_saved(cfg)
-    errors = validate_environment(gemini_config)
+    whisper_config = _whisper_config_from_saved(cfg)
+    provider = _provider_from_saved(cfg)
+
+    if provider == PROVIDER_WHISPER:
+        errors = whisper_client.validate_environment(whisper_config)
+    else:
+        errors = validate_environment(gemini_config)
     if errors:
         raise HTTPException(400, "\n".join(errors))
 
@@ -163,6 +230,8 @@ async def create_job(
         title=title,
         context_prompt=context_prompt,
         gemini=gemini_config,
+        provider=provider,
+        whisper=whisper_config,
     )
 
     def on_done(session_dir: Path, consolidated_path: Path):

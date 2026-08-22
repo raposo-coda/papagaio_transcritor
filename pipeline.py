@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 
 try:
+    from . import whisper_client
+    from .config import PROVIDER_WHISPER
     from .converter import check_ffmpeg, convert_to_mp4
     from .gemini_client import generate_summary, transcribe_path, validate_environment
     from .logger import log
@@ -23,6 +25,8 @@ try:
         transcript_to_cache,
     )
 except ImportError:
+    import whisper_client  # type: ignore
+    from config import PROVIDER_WHISPER  # type: ignore
     from converter import check_ffmpeg, convert_to_mp4  # type: ignore
     from gemini_client import generate_summary, transcribe_path, validate_environment  # type: ignore
     from logger import log  # type: ignore
@@ -108,7 +112,8 @@ def build_consolidated_markdown(
             f"| Idioma solicitado | `{request.lang_code or 'auto'}` |",
             f"| Duracao total | {fmt_time(total_duration)} |",
             f"| Total de palavras | {total_words:,} |",
-            f"| Modelo de transcricao | `{request.gemini.transcription_model}` |",
+            f"| Provider de transcricao | `{transcripts[0].provider_label if transcripts else request.provider}` |",
+            f"| Modelo de transcricao | `{transcription_model_for(request) or 'default'}` |",
             f"| Modelo de resumo | `{request.gemini.summary_model}` |",
             "",
             "---",
@@ -135,10 +140,23 @@ def build_consolidated_markdown(
     return "\n".join(lines)
 
 
+def transcription_model_for(request: PipelineRequest) -> str:
+    """Modelo efetivamente usado na transcricao, conforme o provider escolhido."""
+    if request.provider == PROVIDER_WHISPER:
+        return request.whisper.model
+    return request.gemini.transcription_model
+
+
 def _validate_runtime(request: PipelineRequest):
-    errors = validate_environment(request.gemini)
-    if not check_ffmpeg():
-        errors.append("ffmpeg nao encontrado. Necessario para normalizar os arquivos antes do envio ao Gemini.")
+    if request.provider == PROVIDER_WHISPER:
+        # O Whisper decodifica o audio com PyAV, entao nao depende do binario do ffmpeg.
+        # O resumo continua no Gemini quando houver API key; sem ela, generate_summary
+        # ja cai sozinho no fallback local.
+        errors = whisper_client.validate_environment(request.whisper)
+    else:
+        errors = validate_environment(request.gemini)
+        if not check_ffmpeg():
+            errors.append("ffmpeg nao encontrado. Necessario para normalizar os arquivos antes do envio ao Gemini.")
     if errors:
         raise RuntimeError("\n".join(errors))
 
@@ -155,14 +173,17 @@ def _process_file(
     log.info(f"Arquivo [{idx}/{total}]: {file_path.name}")
     log.info(f"{'=' * 50}")
 
-    cache_key = build_cache_key(file_path, request.gemini.transcription_model)
+    cache_key = build_cache_key(file_path, request.provider, transcription_model_for(request))
     cache_record = cache.get(cache_key)
     if cache_record:
         log.ok(f"  [cache] Reutilizando transcricao existente para {file_path.name}")
         return transcript_from_cache(cache_record, file_path)
 
-    converted_path, mime_type = convert_to_mp4(file_path, tmpdir)
-    transcript = transcribe_path(converted_path, request.lang_code, request.gemini, mime_type=mime_type)
+    if request.provider == PROVIDER_WHISPER:
+        transcript = whisper_client.transcribe_path(file_path, request.lang_code, request.whisper)
+    else:
+        converted_path, mime_type = convert_to_mp4(file_path, tmpdir)
+        transcript = transcribe_path(converted_path, request.lang_code, request.gemini, mime_type=mime_type)
     transcript.source_path = file_path
     return transcript
 
@@ -171,7 +192,9 @@ def run_pipeline(request: PipelineRequest, on_done, on_error):
     try:
         log.start_session(request.title or "sessao")
         log.info(f"Pipeline iniciado: {len(request.file_paths)} arquivo(s)")
-        log.info(f"Transcricao: gemini | modelo={request.gemini.transcription_model}")
+        log.info(f"Transcricao: {request.provider} | modelo={transcription_model_for(request)}")
+        if request.provider == PROVIDER_WHISPER:
+            log.info(f"Diarizacao: {'pyannote' if request.whisper.diarization else 'desligada'}")
         log.info(f"Resumo: gemini | modelo={request.gemini.summary_model}")
         log.info(f"Pasta de saida: {request.output_dir}")
 
@@ -190,7 +213,7 @@ def run_pipeline(request: PipelineRequest, on_done, on_error):
                 md_path.write_text(build_file_markdown(transcript), encoding="utf-8")
                 log.ok(f"  [salvo] {md_path.name}")
 
-                cache_key = build_cache_key(file_path, request.gemini.transcription_model)
+                cache_key = build_cache_key(file_path, request.provider, transcription_model_for(request))
                 cache[cache_key] = transcript_to_cache(transcript)
                 save_cache(session_dir, cache)
 

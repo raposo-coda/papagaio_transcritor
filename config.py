@@ -64,6 +64,24 @@ LANGS = {
 GEMINI_DEFAULT_TRANSCRIPTION_MODEL = "gemini-flash-latest"
 GEMINI_DEFAULT_SUMMARY_MODEL = "gemini-flash-latest"
 
+PROVIDER_GEMINI = "gemini"
+PROVIDER_WHISPER = "whisper"
+PROVIDERS = {
+    PROVIDER_GEMINI: "Gemini (nuvem)",
+    PROVIDER_WHISPER: "Whisper local",
+}
+DEFAULT_PROVIDER = PROVIDER_GEMINI
+
+# Whisper roda offline; o resumo continua no Gemini quando houver API key salva.
+WHISPER_MODELS = ["tiny", "base", "small", "medium", "large-v3"]
+WHISPER_DEFAULT_MODEL = "small"
+WHISPER_DEFAULT_DEVICE = "auto"  # auto | cpu | cuda
+WHISPER_DEFAULT_COMPUTE_TYPE = "int8"
+WHISPER_SAMPLE_RATE = 16000
+# Sobrescreva com PAPAGAIO_DIARIZATION_MODEL se quiser outro checkpoint
+# (ex.: pyannote/speaker-diarization-community-1, do pyannote.audio 4.x).
+DIARIZATION_MODEL = os.environ.get("PAPAGAIO_DIARIZATION_MODEL") or "pyannote/speaker-diarization-3.1"
+
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024  # limite do File API do Gemini por arquivo
 
 

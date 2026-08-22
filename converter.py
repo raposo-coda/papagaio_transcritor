@@ -12,9 +12,11 @@ from pathlib import Path
 try:
     from .config import VIDEO_EXTS
     from .logger import log
+    from .utils import ascii_safe_stem
 except ImportError:
     from config import VIDEO_EXTS  # type: ignore
     from logger import log  # type: ignore
+    from utils import ascii_safe_stem  # type: ignore
 
 
 def get_ffmpeg_command() -> str | None:
@@ -46,7 +48,9 @@ def convert_to_mp4(source_path: Path, out_dir: Path) -> tuple[Path, str]:
     if not ffmpeg_command:
         raise RuntimeError("ffmpeg nao encontrado. Necessario para normalizar o arquivo antes do envio ao Gemini.")
 
-    out_path = out_dir / f"{source_path.stem}.mp4"
+    # Nome ASCII: o Gemini envia o nome do arquivo num header HTTP, que nao
+    # aceita acentos. O nome original volta em transcript.source_path.
+    out_path = out_dir / f"{ascii_safe_stem(source_path.stem)}.mp4"
     is_video = source_path.suffix.lower() in VIDEO_EXTS
 
     log.info(f"  [ffmpeg] Convertendo para mp4: {source_path.name}")

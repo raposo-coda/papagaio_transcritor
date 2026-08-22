@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import unicodedata
 from pathlib import Path
 
 try:
@@ -21,6 +22,29 @@ except ImportError:
 def fmt_time(seconds: float) -> str:
     total = int(seconds or 0)
     return f"{total // 3600:02d}:{(total % 3600) // 60:02d}:{total % 60:02d}"
+
+
+def ascii_safe_stem(stem: str, fallback: str = "arquivo") -> str:
+    """Versao ASCII de um nome de arquivo.
+
+    O SDK do Gemini manda o nome do arquivo no header HTTP
+    `X-Goog-Upload-File-Name`, e o httpx exige headers em ASCII: um acento no
+    nome do arquivo derruba o upload com UnicodeEncodeError.
+    """
+    normalized = unicodedata.normalize("NFKD", stem)
+    without_marks = "".join(char for char in normalized if not unicodedata.combining(char))
+    safe = "".join(
+        char if char.isascii() and (char.isalnum() or char in "._- ") else "_"
+        for char in without_marks
+    ).strip(" ._-")
+
+    if safe == stem:
+        return safe
+    # O nome mudou, entao dois arquivos distintos podem colidir ("cafe" e "cafe"
+    # acentuado viram o mesmo). Um sufixo deterministico evita que um
+    # temporario sobrescreva o outro e a transcricao saia trocada.
+    digest = hashlib.sha1(stem.encode("utf-8")).hexdigest()[:8]
+    return f"{safe}_{digest}" if safe else f"{fallback}_{digest}"
 
 
 def make_safe_name(title: str, fallback: str = "sessao") -> str:

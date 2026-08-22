@@ -122,6 +122,7 @@ def get_config():
         "transcription_model": cfg.get("gemini_transcription_model") or GEMINI_DEFAULT_TRANSCRIPTION_MODEL,
         "summary_model": cfg.get("gemini_summary_model") or GEMINI_DEFAULT_SUMMARY_MODEL,
         "lang": cfg.get("lang", "Portugues (pt)"),
+        "summary_enabled": bool(cfg.get("summary_enabled", True)),
         "provider": _provider_from_saved(cfg),
         "whisper_model": whisper.model,
         "whisper_device": whisper.device,
@@ -147,6 +148,8 @@ def set_config(payload: dict):
         cfg["gemini_summary_model"] = (payload["summary_model"] or "").strip()
     if "lang" in payload:
         cfg["lang"] = payload["lang"]
+    if "summary_enabled" in payload:
+        cfg["summary_enabled"] = bool(payload["summary_enabled"])
     if payload.get("provider") in PROVIDERS:
         cfg["provider"] = payload["provider"]
     if "whisper_model" in payload:
@@ -170,6 +173,7 @@ async def create_job(
     lang: str = Form("pt"),
     title: str = Form(""),
     context_prompt: str = Form(""),
+    summary_enabled: bool = Form(True),
 ):
     global _current_job_id
 
@@ -232,6 +236,7 @@ async def create_job(
         gemini=gemini_config,
         provider=provider,
         whisper=whisper_config,
+        summary_enabled=summary_enabled,
     )
 
     def on_done(session_dir: Path, consolidated_path: Path):

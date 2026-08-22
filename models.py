@@ -75,3 +75,4 @@ class PipelineRequest:
     gemini: GeminiConfig
     provider: str = "gemini"
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
+    summary_enabled: bool = True

@@ -48,6 +48,12 @@
       : "Gere uma API key gratuita em aistudio.google.com com sua conta Google.";
   }
 
+  function applySummaryHint() {
+    el("summary-hint").textContent = el("summary-enabled").checked
+      ? "O _consolidado.md traz a analise unificada gerada pelo Gemini."
+      : "So as transcricoes. O _consolidado.md sai com metadados e indice dos arquivos, sem analise.";
+  }
+
   async function loadConfig() {
     const res = await fetch("/api/config");
     const cfg = await res.json();
@@ -56,6 +62,8 @@
     if (state.langs[cfg.lang]) {
       el("lang-select").value = cfg.lang;
     }
+    el("summary-enabled").checked = cfg.summary_enabled !== false;
+    applySummaryHint();
     el("provider-select").value = cfg.provider || "gemini";
     el("whisper-model").value = cfg.whisper_model || "small";
     el("whisper-device").value = cfg.whisper_device || "auto";
@@ -87,6 +95,7 @@
       transcription_model: el("transcription-model").value.trim(),
       summary_model: el("summary-model").value.trim(),
       lang: el("lang-select").value,
+      summary_enabled: el("summary-enabled").checked,
       provider: el("provider-select").value,
       whisper_model: el("whisper-model").value,
       whisper_device: el("whisper-device").value,
@@ -158,6 +167,7 @@
     formData.append("lang", el("lang-select").value);
     formData.append("title", el("title-input").value.trim());
     formData.append("context_prompt", el("context-input").value);
+    formData.append("summary_enabled", el("summary-enabled").checked);
 
     el("start-btn").disabled = true;
     el("start-btn").textContent = "Processando...";
@@ -238,6 +248,7 @@
   });
   el("save-config-btn").addEventListener("click", saveConfig);
   el("provider-select").addEventListener("change", applyProviderVisibility);
+  el("summary-enabled").addEventListener("change", applySummaryHint);
   el("start-btn").addEventListener("click", startJob);
   el("clear-log-btn").addEventListener("click", () => {
     el("log-box").innerHTML = "";

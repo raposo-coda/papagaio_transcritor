@@ -114,7 +114,7 @@ def build_consolidated_markdown(
             f"| Total de palavras | {total_words:,} |",
             f"| Provider de transcricao | `{transcripts[0].provider_label if transcripts else request.provider}` |",
             f"| Modelo de transcricao | `{transcription_model_for(request) or 'default'}` |",
-            f"| Modelo de resumo | `{request.gemini.summary_model}` |",
+            f"| Modelo de resumo | `{request.gemini.summary_model if request.summary_enabled else 'desativado'}` |",
             "",
             "---",
             "",
@@ -128,7 +128,10 @@ def build_consolidated_markdown(
             f"{len((transcript.text or '').split()):,} palavras"
         )
 
-    lines.extend(["", "---", "", "## Analise e Resumo Unificado", "", summary.strip(), "", "---", ""])
+    if summary.strip():
+        lines.extend(["", "---", "", "## Analise e Resumo Unificado", "", summary.strip(), "", "---", ""])
+    else:
+        lines.extend(["", "---", "", "_Geracao de resumo desativada nesta sessao._", "", "---", ""])
 
     if len(transcripts) > 1:
         lines.extend(["## Relatorios Individuais", ""])
@@ -195,7 +198,10 @@ def run_pipeline(request: PipelineRequest, on_done, on_error):
         log.info(f"Transcricao: {request.provider} | modelo={transcription_model_for(request)}")
         if request.provider == PROVIDER_WHISPER:
             log.info(f"Diarizacao: {'pyannote' if request.whisper.diarization else 'desligada'}")
-        log.info(f"Resumo: gemini | modelo={request.gemini.summary_model}")
+        if request.summary_enabled:
+            log.info(f"Resumo: gemini | modelo={request.gemini.summary_model}")
+        else:
+            log.info("Resumo: desativado")
         log.info(f"Pasta de saida: {request.output_dir}")
 
         _validate_runtime(request)
@@ -218,8 +224,12 @@ def run_pipeline(request: PipelineRequest, on_done, on_error):
                 save_cache(session_dir, cache)
 
         log.info(f"\n{'=' * 50}")
-        log.info("Gerando resumo consolidado...")
-        summary = generate_summary(transcripts, request.context_prompt, request.gemini)
+        if request.summary_enabled:
+            log.info("Gerando resumo consolidado...")
+            summary = generate_summary(transcripts, request.context_prompt, request.gemini)
+        else:
+            log.info("Resumo desativado; gerando so o indice consolidado.")
+            summary = ""
 
         consolidated_path = session_dir / "_consolidado.md"
         consolidated_path.write_text(

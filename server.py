@@ -139,11 +139,7 @@ def _gemini_config_from_saved(cfg: dict) -> GeminiConfig:
 
 def _resolve_local_model(escolha: str) -> str:
     """Converte 'auto' no modelo recomendado para este hardware."""
-    if not escolha or escolha == LOCAL_MODEL_AUTO:
-        return _hardware_info()["recommended_model"]
-    if escolha not in hardware.WHISPER_MODELS:
-        return _hardware_info()["recommended_model"]
-    return escolha
+    return hardware.resolve_model(escolha, _hardware_info())
 
 
 def _local_config_from_saved(cfg: dict) -> LocalConfig:

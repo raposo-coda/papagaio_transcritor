@@ -46,11 +46,30 @@ montam a aplicacao e abrem o navegador no endereco certo.
 2. Clique com o **botao direito** em `instalar-windows.bat` e escolha
    **Executar como administrador**.
 3. Aceite o aviso de permissao do Windows e espere. Na primeira vez isso pode levar
-   de 10 a 30 minutos (o motor de transcricao local e grande).
-4. Se o instalador disser que o Docker foi instalado e pedir para **reiniciar o
-   computador**, reinicie, abra o **Docker Desktop** uma vez (aceite os termos) e rode
-   `instalar-windows.bat` de novo. Isso so acontece uma vez na vida.
-5. Quando terminar, o navegador abre sozinho em `http://localhost:8000`.
+   de 20 a 60 minutos, porque no fim ele ja baixa os modelos.
+4. **Se ele pedir para reiniciar o computador, reinicie e rode o instalador de novo.**
+   Isso acontece quando o Windows precisa ativar o WSL, que e o motor onde o Docker
+   roda. So acontece uma vez.
+5. Quando terminar, o navegador abre sozinho em `http://localhost:8000`, com tudo
+   pronto para transcrever.
+
+O instalador cuida sozinho de:
+
+- achar o Docker mesmo quando ele nao esta no `PATH` (a instalacao por usuario do
+  Docker Desktop costuma nao entrar);
+- instalar o Docker pelo `winget` se ele nao existir;
+- **ativar o WSL e instalar o kernel do WSL2** — sem isso o Docker Desktop abre mas
+  o motor nunca sobe, que e a falha mais confusa de diagnosticar no Windows;
+- detectar placa NVIDIA e subir com aceleracao por GPU, caindo para CPU sozinho se
+  o repasse nao funcionar;
+- baixar os modelos do modo local no fim, para a primeira transcricao nao parar
+  varios minutos baixando alguns GB sem explicacao.
+
+Para pular o download dos modelos (a primeira transcricao baixa sob demanda):
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\papagaio.ps1 -Acao setup -SemModelos
+```
 
 ### Linux ou macOS
 
@@ -389,6 +408,8 @@ rebuild.
 | Sintoma | O que fazer |
 |---|---|
 | A pagina `localhost:8000` nao abre | Confira se o Docker Desktop esta aberto e diz *Engine running*. Depois rode `iniciar.bat` (ou `docker compose up -d`). |
+| Docker Desktop abre mas o motor nunca sobe (Windows) | Falta o WSL. Rode `instalar-windows.bat` como administrador: ele ativa o recurso, instala o kernel do WSL2 e pede o reboot necessario. Sintoma tipico: `docker info` responde erro 500 ou "cannot find the file specified". |
+| `docker` nao e reconhecido no terminal (Windows) | A instalacao por usuario do Docker Desktop nao entra no `PATH`. Use os `.bat` do projeto, que acham o executavel sozinhos, ou o caminho completo em `%LOCALAPPDATA%\Programs\DockerDesktop\resources\bin`. |
 | O botao *Modo local* aparece como "nao instalado" | Sua imagem foi montada antes do modo local existir. Rode `docker compose up -d --build`. Sem Docker: `pip install faster-whisper`. |
 | A primeira transcricao local demora muito para comecar | E o download unico do modelo. O tamanho aparece no seletor de modelo; acompanhe pelo *Log*. |
 | Modo local sem memoria / processo morto | Escolha um modelo menor no seletor (Base ou Tiny). Em gravacoes muito longas, desligar a separacao de falantes tambem alivia — ela carrega o audio inteiro em memoria. |
@@ -455,6 +476,8 @@ config.py         constantes, modos, formatos suportados, persistencia de config
 models.py         dataclasses do pipeline (inclui LocalConfig e o campo mode)
 utils.py          cache por arquivo, pastas de sessao, formatacao de tempo
 logger.py         log com callback para a interface
+warmup.py         baixa os modelos do modo local (rodado pelo instalador)
+scripts/          papagaio.ps1: logica dos atalhos de 1 clique do Windows
 static/           interface web (HTML + CSS + JS puro, sem build)
 legacy/           versao antiga em tkinter, mantida para referencia
 ```

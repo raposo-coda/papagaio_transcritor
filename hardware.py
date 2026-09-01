@@ -272,3 +272,15 @@ def detect() -> dict:
             for nome in MODEL_ORDER
         },
     }
+
+
+def resolve_model(escolha: str, info: dict) -> str:
+    """
+    Converte a escolha do usuario ('auto' ou um tamanho) no modelo efetivo.
+
+    Fica aqui, e nao no server, porque o warmup.py precisa chegar exatamente ao
+    mesmo modelo que a aplicacao usaria - duas copias da regra iriam divergir.
+    """
+    if not escolha or escolha == "auto" or escolha not in WHISPER_MODELS:
+        return info["recommended_model"]
+    return escolha

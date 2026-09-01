@@ -103,6 +103,11 @@ def _load_model(config: LocalConfig):
     return modelo
 
 
+def ensure_model(config: LocalConfig):
+    """Garante o modelo Whisper em disco, baixando se faltar (usado pelo warmup.py)."""
+    _load_model(config)
+
+
 def _executar_diarizacao(file_path: Path, config: LocalConfig) -> list:
     """
     Roda a separacao de falantes, mas nunca derruba a transcricao por causa dela.

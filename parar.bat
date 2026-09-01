@@ -1,13 +1,5 @@
 @echo off
-title Papagaio Transcritor - Parar
+title Papagaio Transcritor - Desligar
 cd /d "%~dp0"
-
-echo.
-echo  Desligando o Papagaio Transcritor...
-echo.
-docker compose down
-echo.
-echo  Desligado. Seus relatorios continuam salvos na pasta "output".
-echo.
-timeout /t 6 >nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\papagaio.ps1" -Acao parar
 exit /b

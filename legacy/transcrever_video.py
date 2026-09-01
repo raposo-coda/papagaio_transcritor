@@ -1,7 +1,21 @@
 #!/usr/bin/env python3
 """
-transcrever_video.py  — GUI Edition
-=====================================
+transcrever_video.py  — GUI Edition  [CÓDIGO LEGADO — NÃO EXECUTE]
+==================================================================
+
+AVISO DE SEGURANÇA
+------------------
+Este arquivo é a versão antiga em tkinter, mantida apenas como referência
+histórica. Ele NÃO é usado pela aplicação atual e não deve ser executado.
+Problemas conhecidos (ver SECURITY.md):
+
+  - aceita URL de servidor arbitrária vinda do usuário (SSRF);
+  - grava chaves de API em texto plano em ~/.transcritor_config.json;
+  - depende de pacotes (assemblyai, anthropic, openai) que não estão no
+    requirements.txt e não são auditados por este projeto.
+
+Use `python main.py` (ou o Docker) para rodar a versão atual.
+
 Interface gráfica para transcrição de vídeo/áudio com IA na nuvem.
 
 Dependências:

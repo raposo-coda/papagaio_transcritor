@@ -5,3 +5,10 @@ __pycache__/
 output/
 data/
 .env
+files.zip
+
+# Audios de referencia baixados para testar a diarizacao (nao versionar binarios)
+testes/
+
+# Configuracao do editor
+.zed/

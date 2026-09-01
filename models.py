@@ -54,6 +54,17 @@ class GeminiConfig:
 
 
 @dataclass
+class LocalConfig:
+    """Configuracao do modo local (Whisper offline)."""
+
+    model_size: str = "small"
+    device: str = "cpu"
+    compute_type: str = "int8"
+    diarize: bool = True  # separar os falantes (offline, via sherpa-onnx)
+    num_speakers: int = 0  # 0 = descobrir automaticamente
+
+
+@dataclass
 class PipelineRequest:
     file_paths: list[Path]
     lang_code: str
@@ -61,3 +72,6 @@ class PipelineRequest:
     title: str
     context_prompt: str
     gemini: GeminiConfig
+    mode: str = "cloud"  # "cloud" (Gemini) ou "local" (Whisper offline)
+    local: LocalConfig = field(default_factory=LocalConfig)
+    job_id: str = ""  # identifica a execucao; desempata pastas de sessao sem titulo

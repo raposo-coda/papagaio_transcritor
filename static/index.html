@@ -9,74 +9,457 @@
 <body>
   <header>
     <h1 id="app-title">Papagaio Transcritor</h1>
-    <div class="subtitle">Transcricao em lote com Google Gemini</div>
+    <div class="subtitle">Transcricao em lote de audio e video</div>
+    <div id="mode-badge" class="mode-badge" title="Modo de processamento em uso">--</div>
+    <button class="small ghost" id="help-btn" title="Abrir o guia de uso">? Como usar</button>
     <div class="version" id="app-version"></div>
   </header>
 
+  <!-- ============ GUIA DE PRIMEIRO USO ============ -->
+  <div id="guide-overlay" class="overlay hidden">
+    <div class="guide">
+      <button class="guide-close" id="guide-close" title="Fechar">x</button>
+      <h2>Bem-vindo ao Papagaio Transcritor</h2>
+      <p class="guide-lead">
+        Ele pega seus audios e videos (reunioes, aulas, entrevistas, podcasts) e devolve
+        um relatorio em texto com o que foi dito, mais um panorama do conteudo.
+      </p>
+
+      <div class="guide-modes">
+        <div class="guide-mode">
+          <div class="guide-mode-title">Modo local</div>
+          <p>
+            A transcricao roda dentro do seu computador, com o modelo Whisper.
+            <strong>Nenhum arquivo e nenhum texto sai da maquina.</strong>
+            Separa os falantes pela voz, tambem offline. Mais lento que a nuvem e sem resumo interpretativo.
+          </p>
+        </div>
+        <div class="guide-mode">
+          <div class="guide-mode-title">Modo nuvem</div>
+          <p>
+            Os arquivos sao enviados ao Google Gemini. Mais rapido, sabe usar os nomes ditos
+            e escreve um resumo analitico. <strong>Exige que o conteudo saia do computador.</strong>
+          </p>
+        </div>
+      </div>
+      <p class="guide-lead">
+        Voce escolhe no passo 1 e pode trocar quando quiser. O painel
+        <em>O que sai do seu computador</em>, na coluna da direita, mostra a qualquer momento
+        exatamente o que e enviado no modo ativo.
+      </p>
+
+      <ol class="guide-steps">
+        <li>
+          <strong>Escolha o modo</strong>
+          <p>
+            Se o conteudo for sensivel (dados de pacientes, juridico, informacao confidencial),
+            use o <em>modo local</em> — ele tambem separa os falantes. Se voce quer velocidade,
+            um resumo bem escrito e falantes chamados pelo nome, use o <em>modo nuvem</em>.
+          </p>
+        </li>
+        <li>
+          <strong>So no modo nuvem: pegue sua chave do Gemini</strong>
+          <p>
+            A chave e uma senha que autoriza o aplicativo a usar a IA do Google na sua conta.
+            E gratuita para uso normal.
+          </p>
+          <p>
+            Abra <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>,
+            entre com sua conta Google, clique em <em>Create API key</em> e copie o codigo
+            (algo como <code>AIza...</code>). Cole no campo <em>API key</em> e clique em
+            <em>Salvar configuracao</em>. Fica guardado na sua maquina; voce so faz isso uma vez.
+          </p>
+          <p>No modo local nao existe chave nem conta: nada a configurar.</p>
+        </li>
+        <li>
+          <strong>Escolha o idioma falado nos arquivos</strong>
+          <p>Ajuda a transcricao a acertar as palavras.</p>
+        </li>
+        <li>
+          <strong>Descreva a sessao</strong>
+          <p>
+            De um nome ao relatorio e escreva quem participa e o que interessa. Ex.:
+            <em>"Reuniao de vendas. Participam Ana (gerente) e Bruno (cliente). Foque nos
+            acordos e prazos combinados."</em> No modo nuvem isso melhora bastante o resumo.
+          </p>
+        </li>
+        <li>
+          <strong>Adicione os arquivos e inicie</strong>
+          <p>
+            Arraste os arquivos ou clique em <em>Adicionar arquivos</em>. O aplicativo mostra
+            uma estimativa de tempo antes de comecar. Acompanhe pelo painel <em>Log</em>.
+            Nao feche a aba enquanto estiver processando.
+          </p>
+        </li>
+        <li>
+          <strong>Baixe os relatorios</strong>
+          <p>
+            Ao terminar, os arquivos aparecem prontos para baixar: um por arquivo enviado e um
+            <em>_consolidado</em> juntando tudo. Quando ha mais de um, aparece tambem um botao
+            para baixar todos de uma vez em <code>.zip</code>. Eles ficam salvos na pasta de
+            destino que voce escolheu em <em>Onde salvar</em> — por padrao, dentro dos seus
+            Documentos.
+          </p>
+        </li>
+      </ol>
+
+      <h3>Como funciona por dentro</h3>
+      <ol class="guide-steps method">
+        <li>
+          <strong>Preparacao do arquivo (sempre local)</strong>
+          <p>
+            O ffmpeg le seu arquivo e o normaliza. No modo local ele extrai apenas o audio, em
+            16 kHz mono — que e exatamente o que o Whisper e a separacao de falantes consomem,
+            entao a imagem do video nem chega a ser processada. No modo nuvem gera um mp4
+            padrao, que e o formato que o Gemini aceita. Isso evita erros de formato e faz
+            qualquer extensao aceita funcionar igual. Esta etapa acontece no seu computador
+            nos dois modos.
+          </p>
+        </li>
+        <li>
+          <strong>Transcricao</strong>
+          <p>
+            <em>No modo local:</em> o modelo Whisper roda na sua CPU (ou GPU, se houver uma
+            NVIDIA acessivel) e converte a fala em texto, marcando o instante de cada trecho.
+            Um detector de voz descarta silencios. O tamanho do modelo e escolhido conforme o
+            seu hardware — quanto maior, melhor a precisao e mais lenta a transcricao.
+          </p>
+          <p>
+            <em>No modo nuvem:</em> o mp4 e enviado aos servidores do Google, e o Gemini
+            devolve a transcricao ja dividida por falante, em formato estruturado.
+          </p>
+        </li>
+        <li>
+          <strong>Separacao dos falantes (modo local)</strong>
+          <p>
+            Em paralelo a transcricao, dois modelos pequenos analisam o audio aqui na maquina:
+            o primeiro corta a gravacao nos pontos em que a voz muda; o segundo transforma cada
+            trecho num conjunto de numeros que descreve o timbre daquela voz. Trechos com timbre
+            parecido sao agrupados, e cada grupo vira um falante.
+          </p>
+          <p>
+            Depois, cada palavra transcrita e atribuida ao falante que ocupava aquele instante —
+            por isso uma frase em que duas pessoas se atropelam e cortada no ponto certo, em vez
+            de ir inteira para a pessoa errada.
+          </p>
+          <p>
+            O que o aplicativo compara e a <em>voz</em>, nao a identidade: ele sabe que sao
+            pessoas diferentes, mas nao sabe os nomes delas. E a comparacao vale so dentro
+            daquela gravacao — nada e guardado nem reconhecido entre arquivos.
+          </p>
+        </li>
+        <li>
+          <strong>Montagem do relatorio</strong>
+          <p>
+            Os trechos viram um arquivo Markdown com metadados (duracao, idioma, palavras,
+            modelo usado) e a transcricao com marcacao de tempo.
+          </p>
+        </li>
+        <li>
+          <strong>Panorama consolidado</strong>
+          <p>
+            <em>No modo nuvem:</em> todas as transcricoes, mais o contexto que voce escreveu,
+            vao ao Gemini, que escreve um relatorio analitico (resumo, pontos-chave, decisoes).
+          </p>
+          <p>
+            <em>No modo local:</em> o aplicativo calcula um panorama a partir do proprio texto —
+            duracao, contagem de palavras, termos recorrentes e trechos reais. E estatistica,
+            nao interpretacao: nenhuma IA e nenhuma rede envolvidas.
+          </p>
+        </li>
+        <li>
+          <strong>Cache</strong>
+          <p>
+            Cada arquivo transcrito e guardado com uma assinatura (caminho, tamanho, data,
+            modo e modelo). Reenviar o mesmo arquivo nas mesmas condicoes reaproveita o
+            resultado na hora, sem reprocessar e sem custo.
+          </p>
+        </li>
+      </ol>
+
+      <h3>Perguntas comuns</h3>
+      <dl class="faq">
+        <dt>Que formatos posso enviar?</dt>
+        <dd id="guide-formats">Audio e video nos formatos mais comuns.</dd>
+
+        <dt>Isso custa dinheiro?</dt>
+        <dd>
+          O aplicativo e gratuito e de codigo aberto (licenca MIT). O modo local nao custa nada
+          e nao depende de conta nenhuma. O modo nuvem usa o Gemini, que tem um plano gratuito
+          para uso normal; volumes grandes podem entrar na cobranca do Google.
+        </dd>
+
+        <dt>No modo local realmente nao sai nada?</dt>
+        <dd>
+          O audio, o video e o texto nunca saem da maquina. A unica excecao e o download do
+          modelo Whisper na primeira vez que voce usa um tamanho — sao arquivos do modelo
+          vindo de um repositorio publico, sem nada seu no caminho. Feito isso, o modo local
+          funciona com a internet desligada. O painel <em>O que sai do seu computador</em>
+          detalha isso.
+        </dd>
+
+        <dt>Como funciona a separacao de falantes no modo local?</dt>
+        <dd>
+          O aplicativo compara o timbre das vozes e agrupa os trechos parecidos, tudo offline.
+          Ele acerta bem em audio limpo com pessoas que se revezam. Erra mais quando as vozes
+          sao muito parecidas, quando duas pessoas falam por cima uma da outra por muito tempo,
+          ou em gravacoes ruins (telefone, microfone distante). Se voce souber quantas pessoas
+          participam, informe no campo <em>Quantas pessoas falam</em> — melhora bastante.
+        </dd>
+
+        <dt>Por que os falantes se chamam "Falante 1" e nao pelos nomes?</dt>
+        <dd>
+          Porque o modo local reconhece <em>vozes</em>, nao pessoas: ele sabe que sao tres
+          participantes diferentes, mas nao tem como saber os nomes. Renomeie no arquivo
+          <code>.md</code> depois, ou use o modo nuvem, onde o Gemini aproveita os nomes ditos
+          durante a conversa.
+        </dd>
+
+        <dt>Enviei o mesmo arquivo duas vezes. Vai processar de novo?</dt>
+        <dd>
+          Nao — o cache devolve o resultado na hora. Trocar de modo, de modelo, ou mexer na
+          separacao de falantes gera uma entrada nova.
+        </dd>
+
+        <dt>Deu erro. E agora?</dt>
+        <dd>
+          Leia a ultima linha vermelha do <em>Log</em>. No modo nuvem, os motivos comuns sao chave
+          de API errada, falta de internet ou limite da conta Google. No modo local, costuma ser
+          falta de espaco em disco para o modelo ou memoria insuficiente — nesse caso escolha um
+          modelo menor.
+        </dd>
+      </dl>
+
+      <div class="guide-actions">
+        <button class="primary" id="guide-start">Entendi, vamos comecar</button>
+      </div>
+    </div>
+  </div>
+
   <main>
     <div class="col-left">
-      <section class="block">
-        <div class="section-title">Gemini</div>
+
+      <!-- ===================== PASSO 1: MODO ===================== -->
+      <section class="block" id="block-mode">
+        <div class="section-title">1. Modo de processamento</div>
+        <p class="explain">
+          Decide onde seus arquivos sao transcritos. Voce pode trocar quando quiser.
+        </p>
+
+        <div class="mode-picker">
+          <button type="button" class="mode-card" id="mode-local" data-mode="local">
+            <div class="mode-card-tag safe">Nada sai do computador</div>
+            <div class="mode-card-title">Modo local</div>
+            <div class="mode-card-desc">
+              Transcreve aqui dentro, com o modelo Whisper. Funciona sem internet e sem conta.
+              Separa os falantes pela voz. Mais lento; sem resumo interpretativo.
+            </div>
+          </button>
+
+          <button type="button" class="mode-card" id="mode-cloud" data-mode="cloud">
+            <div class="mode-card-tag net">Envia para o Google</div>
+            <div class="mode-card-title">Modo nuvem</div>
+            <div class="mode-card-desc">
+              Usa o Google Gemini. Mais rapido, chama os falantes pelos nomes ditos na conversa
+              e escreve um resumo analitico. Exige chave de API e que o conteudo saia da maquina.
+            </div>
+          </button>
+        </div>
+
+        <div id="mode-note" class="mode-note"></div>
+      </section>
+
+      <!-- ============ HARDWARE / MODELO (so no modo local) ============ -->
+      <section class="block mode-only-local" id="block-local">
+        <div class="section-title">Motor local</div>
+        <p class="explain">
+          O aplicativo mediu o hardware desta maquina e escolheu o maior modelo que ela
+          aguenta rodar em tempo razoavel.
+        </p>
+
+        <div id="hardware-box" class="hardware-box">Detectando hardware...</div>
+
+        <div class="field" style="margin-top:12px">
+          <label for="local-model-select">Modelo de transcricao local</label>
+          <select id="local-model-select"></select>
+          <div class="hint" id="local-model-hint"></div>
+        </div>
+
+        <div class="field" id="diarize-field">
+          <label class="checkbox-label" for="local-diarize-toggle">
+            <input type="checkbox" id="local-diarize-toggle" />
+            <span>Separar os falantes (identificar quem falou o que)</span>
+          </label>
+          <div class="hint">
+            Tambem roda offline: o aplicativo compara as vozes aqui dentro e marca a transcricao
+            como <code>Falante 1</code>, <code>Falante 2</code>... Ele distingue vozes diferentes,
+            mas <strong>nao sabe os nomes das pessoas</strong>.
+          </div>
+        </div>
+
+        <div class="field" id="speakers-field">
+          <label for="local-speakers-select">Quantas pessoas falam</label>
+          <select id="local-speakers-select"></select>
+          <div class="hint">
+            Se voce sabe quantas pessoas participam, informe: o resultado fica bem melhor do que
+            deixar o aplicativo adivinhar.
+          </div>
+        </div>
+
+        <div class="hint" id="local-diarize-hint"></div>
+      </section>
+
+      <!-- ============ CHAVE GEMINI (so no modo nuvem) ============ -->
+      <section class="block mode-only-cloud" id="block-gemini">
+        <div class="section-title">Chave do Gemini</div>
+        <p class="explain">
+          Uma unica vez: cole aqui a chave que autoriza o aplicativo a usar a IA do Google na sua
+          conta. Ela fica salva no seu computador e nunca e mostrada de volta.
+        </p>
         <div class="row">
           <div class="field">
             <label for="api-key">API key</label>
-            <input type="password" id="api-key" placeholder="Deixe em branco para manter a atual" />
+            <input type="password" id="api-key" placeholder="Cole aqui sua chave (AIza...)" />
+            <div class="hint">
+              Nao tem uma? Gere gratuitamente em
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>
+              usando sua conta Google. Deixe em branco para manter a chave ja salva.
+            </div>
           </div>
         </div>
-        <div class="row">
-          <div class="field">
-            <label for="transcription-model">Modelo de transcricao</label>
-            <input type="text" id="transcription-model" />
+
+        <details class="advanced">
+          <summary>Opcoes avancadas (pode ignorar)</summary>
+          <div class="row">
+            <div class="field">
+              <label for="transcription-model">Modelo de transcricao</label>
+              <input type="text" id="transcription-model" />
+            </div>
+            <div class="field">
+              <label for="summary-model">Modelo de resumo</label>
+              <input type="text" id="summary-model" />
+            </div>
           </div>
-          <div class="field">
-            <label for="summary-model">Modelo de resumo</label>
-            <input type="text" id="summary-model" />
+          <div class="hint">
+            Sao as versoes da IA do Google usadas para transcrever e para resumir.
+            Os padroes ja funcionam bem.
           </div>
-        </div>
+        </details>
+
         <button class="small" id="save-config-btn">Salvar configuracao</button>
         <div class="api-status" id="api-status"></div>
-        <div class="hint">Gere uma API key gratuita em aistudio.google.com com sua conta Google.</div>
+      </section>
+
+      <section class="block" id="block-output">
+        <div class="section-title">Onde salvar</div>
+        <p class="explain">
+          Pasta do seu computador onde os relatorios sao gravados. Por padrao, uma pasta
+          "Papagaio Transcritor" dentro dos seus Documentos.
+        </p>
+        <div class="field">
+          <label for="output-dir">Pasta de destino</label>
+          <input type="text" id="output-dir" spellcheck="false" placeholder="Carregando..." />
+          <div class="hint" id="output-dir-hint"></div>
+        </div>
+        <div class="row">
+          <button class="small" id="save-output-dir-btn">Salvar pasta</button>
+          <button class="small ghost" id="reset-output-dir-btn">Usar a pasta padrao</button>
+        </div>
       </section>
 
       <section class="block">
-        <div class="section-title">Configuracao geral</div>
+        <div class="section-title">2. Idioma</div>
+        <p class="explain">Em que lingua as pessoas falam nos arquivos. Ajuda a acertar as palavras.</p>
         <div class="row">
           <div class="field">
-            <label for="lang-select">Idioma</label>
+            <label for="lang-select">Idioma falado</label>
             <select id="lang-select"></select>
           </div>
         </div>
       </section>
 
       <section class="block">
-        <div class="section-title">Sessao</div>
+        <div class="section-title">3. Sobre esta sessao</div>
+        <p class="explain">Opcional. No modo nuvem, quanto mais contexto voce der, melhor fica o resumo.</p>
         <div class="field">
-          <label for="title-input">Nome do relatorio consolidado (opcional)</label>
-          <input type="text" id="title-input" />
+          <label for="title-input">Nome do relatorio consolidado</label>
+          <input type="text" id="title-input" placeholder="Ex.: Reuniao comercial - marco" />
+          <div class="hint">
+            Vira o nome da subpasta dentro da pasta de destino. Repetir o mesmo nome de
+            proposito reaproveita o cache e nao reprocessa o que ja foi feito. Sem nome,
+            cada execucao ganha uma pasta propria para nao se misturar com as outras.
+          </div>
         </div>
         <div class="field">
-          <label for="context-input">Contexto, participantes ou foco da analise (opcional)</label>
-          <textarea id="context-input" rows="4"></textarea>
+          <label for="context-input">Contexto, participantes ou foco da analise</label>
+          <textarea id="context-input" rows="4"
+            placeholder="Ex.: Reuniao de vendas. Participam Ana (gerente) e Bruno (cliente). Foque nos acordos e prazos combinados."></textarea>
+          <div class="hint" id="context-hint">
+            Diga quem fala, do que se trata e o que voce quer destacar.
+          </div>
         </div>
       </section>
 
       <section class="block">
-        <div class="section-title">Arquivos</div>
+        <div class="section-title">4. Arquivos</div>
+        <p class="explain">Os audios ou videos que voce quer transcrever. Pode adicionar varios de uma vez.</p>
         <input type="file" id="file-input" multiple />
-        <button id="add-files-btn">+ Adicionar arquivos</button>
+        <div id="dropzone">
+          <div class="dropzone-main">Arraste seus arquivos aqui</div>
+          <div class="dropzone-sub">ou</div>
+          <button id="add-files-btn">+ Adicionar arquivos</button>
+          <div class="hint" id="formats-hint">Formatos aceitos: carregando...</div>
+        </div>
         <ul id="file-list"></ul>
+        <div class="hint" id="file-summary"></div>
+        <div id="estimate-box" class="estimate-box hidden"></div>
       </section>
 
       <section class="block">
+        <div class="section-title">5. Rodar</div>
+        <p class="explain" id="run-explain"></p>
         <button class="primary" id="start-btn" style="width:100%">Iniciar transcricao</button>
+        <div class="hint" id="start-hint"></div>
         <div id="results"></div>
       </section>
     </div>
 
     <div class="col-right">
+      <!-- ============ PAINEL DE AUDITORIA ============ -->
+      <section class="block audit" id="audit-panel">
+        <div class="section-title">O que sai do seu computador</div>
+        <div id="audit-body">Carregando...</div>
+      </section>
+
       <div class="section-title">Log</div>
-      <div id="log-box"></div>
+      <p class="explain">O que o aplicativo esta fazendo agora, passo a passo. Erros aparecem em vermelho.</p>
+      <div id="log-box"><div class="dim">Aguardando. Escolha o modo, adicione os arquivos e clique em Iniciar transcricao.</div></div>
       <button class="small" id="clear-log-btn" style="margin-top:8px">Limpar</button>
+
+      <div class="side-help">
+        <div class="section-title">O que voce recebe</div>
+        <ul class="plain-list">
+          <li><strong>Um .md por arquivo</strong> - transcricao completa, com marcacao de tempo e de quem falou.</li>
+          <li><strong>_consolidado.md</strong> - panorama juntando todos os arquivos da sessao.</li>
+        </ul>
+        <div class="hint">
+          Arquivos <code>.md</code> (Markdown) sao texto simples. Abrem em qualquer editor,
+          no Bloco de Notas, no Word ou no Obsidian.
+        </div>
+      </div>
+
+      <div class="side-help">
+        <div class="section-title">Como funciona</div>
+        <ol class="plain-steps">
+          <li><strong>Preparar</strong> - o ffmpeg extrai o audio (local) ou gera o mp4 (nuvem).</li>
+          <li><strong>Transcrever</strong> - Whisper aqui na maquina, ou Gemini na nuvem.</li>
+          <li><strong>Separar vozes</strong> - no modo local, offline; no modo nuvem, o proprio Gemini.</li>
+          <li><strong>Montar</strong> - os trechos viram um relatorio Markdown com marcacao de tempo.</li>
+          <li><strong>Consolidar</strong> - resumo do Gemini, ou panorama estatistico local.</li>
+          <li><strong>Guardar</strong> - tudo na pasta de destino, com cache para nao repetir trabalho.</li>
+        </ol>
+        <button class="small ghost" id="method-btn" style="margin-top:4px">Ver explicacao completa</button>
+      </div>
     </div>
   </main>
 

@@ -1,4 +1,9 @@
-# Papagaio Transcritor
+<p align="center">
+  <img src="assets/logo.png" alt="Papagaio Transcritor" width="170" />
+</p>
+
+<h1 align="center">Papagaio Transcritor</h1>
+
 
 Transforma audios e videos (reunioes, aulas, entrevistas, podcasts) em relatorios de texto
 com marcacao de tempo, mais um panorama do conteudo.

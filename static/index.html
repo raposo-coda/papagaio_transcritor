@@ -4,10 +4,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Papagaio Transcritor</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png" />
+  <link rel="apple-touch-icon" href="/static/logo.png" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <header>
+    <!-- alt vazio de proposito: o titulo ao lado ja diz o nome, e repetir so
+         atrapalharia quem usa leitor de tela. -->
+    <img id="app-logo" src="/static/logo.png" alt="" width="36" height="36" />
     <h1 id="app-title">Papagaio Transcritor</h1>
     <div class="subtitle">Transcricao em lote de audio e video</div>
     <div id="mode-badge" class="mode-badge" title="Modo de processamento em uso">--</div>
@@ -19,7 +24,10 @@
   <div id="guide-overlay" class="overlay hidden">
     <div class="guide">
       <button class="guide-close" id="guide-close" title="Fechar">x</button>
-      <h2>Bem-vindo ao Papagaio Transcritor</h2>
+      <div class="guide-header">
+        <img class="guide-logo" src="/static/logo.png" alt="" width="96" height="96" />
+        <h2>Bem-vindo ao Papagaio Transcritor</h2>
+      </div>
       <p class="guide-lead">
         Ele pega seus audios e videos (reunioes, aulas, entrevistas, podcasts) e devolve
         um relatorio em texto com o que foi dito, mais um panorama do conteudo.

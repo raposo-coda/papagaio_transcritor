@@ -1068,3 +1068,54 @@ label.checkbox-label input[type="checkbox"]:disabled {
 label.checkbox-label input[type="checkbox"]:disabled + span {
   color: var(--muted);
 }
+
+/* ============================================================
+   Logo
+   ============================================================ */
+
+header #app-logo {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  align-self: center;
+  /* O logo ja e neon; o halo so o assenta no cabecalho escuro. */
+  filter: drop-shadow(0 0 7px rgba(57, 242, 216, 0.35));
+}
+
+.guide-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.guide-header h2 {
+  margin: 0;
+}
+
+.guide-logo {
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 14px rgba(57, 242, 216, 0.3));
+}
+
+@media (max-width: 900px) {
+  .guide-header {
+    gap: 12px;
+  }
+
+  .guide-logo {
+    width: 64px;
+    height: 64px;
+  }
+}
+
+/* Telas bem estreitas: o logo do cabecalho compete por espaco com o badge de
+   modo e o botao de ajuda, e o titulo e quem precisa sobreviver. */
+@media (max-width: 560px) {
+  header #app-logo {
+    width: 28px;
+    height: 28px;
+  }
+}

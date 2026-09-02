@@ -1,0 +1,59 @@
+name: CI
+
+# A defesa principal contra alguem commitar uma chave de API ou uma transcricao
+# com dados pessoais em um fork deste repositorio.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  segredos:
+    name: Varredura de segredos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks precisa do historico completo
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dados-pessoais:
+    name: Arquivos que nunca devem ser commitados
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Conferir data/ e output/
+        run: |
+          proibidos=$(git ls-files | grep -E '^(data|output)/|\.env$' || true)
+          if [ -n "$proibidos" ]; then
+            echo "::error::Estes arquivos contem chave de API ou transcricoes e nao podem ser versionados:"
+            echo "$proibidos"
+            exit 1
+          fi
+          echo "OK: nenhum arquivo de dados versionado."
+
+  qualidade:
+    name: Lint e analise estatica
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Instalar ferramentas
+        run: pip install ruff "bandit[toml]" pip-audit
+      - name: Compilar (sintaxe)
+        run: python -m compileall -q . -x 'legacy|\.git'
+      - name: ruff
+        run: ruff check . --exclude legacy
+      - name: bandit
+        # Exclusoes e regras dispensadas ficam em [tool.bandit] no pyproject.toml,
+        # cada uma com o motivo escrito.
+        run: bandit -q -c pyproject.toml -r .
+      - name: pip-audit
+        run: pip-audit -r requirements.txt --strict

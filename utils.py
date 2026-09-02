@@ -43,7 +43,7 @@ def ascii_safe_stem(stem: str, fallback: str = "arquivo") -> str:
     # O nome mudou, entao dois arquivos distintos podem colidir ("cafe" e "cafe"
     # acentuado viram o mesmo). Um sufixo deterministico evita que um
     # temporario sobrescreva o outro e a transcricao saia trocada.
-    digest = hashlib.sha1(stem.encode("utf-8")).hexdigest()[:8]
+    digest = hashlib.sha1(stem.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
     return f"{safe}_{digest}" if safe else f"{fallback}_{digest}"
 
 
@@ -53,8 +53,19 @@ def make_safe_name(title: str, fallback: str = "sessao") -> str:
     return safe or fallback
 
 
-def get_session_dir(output_dir: Path, title: str) -> Path:
-    session = output_dir / make_safe_name(title, fallback="sessao")
+def get_session_dir(output_dir: Path, title: str, job_id: str = "") -> Path:
+    """
+    Pasta da sessao, derivada do titulo.
+
+    Repetir o mesmo titulo de proposito reaproveita a pasta e o cache - e assim
+    que o cache economiza reprocessamento. Ja quando o titulo esta em branco (ou
+    so tem simbolos), execucoes sem relacao nenhuma cairiam todas na mesma pasta
+    "sessao" e se misturariam; nesse caso o job_id desempata.
+    """
+    nome = make_safe_name(title, fallback="")
+    if not nome:
+        nome = f"sessao_{job_id}" if job_id else "sessao"
+    session = output_dir / nome
     session.mkdir(parents=True, exist_ok=True)
     log.debug(f"Pasta de sessao: {session}")
     return session
@@ -81,18 +92,33 @@ def save_cache(session_dir: Path, cache: dict):
         log.warning(f"Falha ao salvar cache: {exc}")
 
 
-def build_cache_key(file_path: Path, provider: str, model: str) -> str:
-    stat = file_path.stat()
+def _file_fingerprint(file_path: Path) -> str:
+    """Hash do conteudo, lido em blocos para nao carregar o arquivo na memoria."""
+    digest = hashlib.sha1(usedforsecurity=False)  # identidade de cache, nao seguranca
+    with file_path.open("rb") as handle:
+        for bloco in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(bloco)
+    return digest.hexdigest()
+
+
+def build_cache_key(file_path: Path, model: str, provider: str = "gemini") -> str:
+    """
+    Chave derivada do CONTEUDO do arquivo, nao do caminho.
+
+    Todo envio pela interface web cai numa pasta temporaria com nome novo, entao
+    caminho e data de modificacao mudam a cada execucao - chavear por eles fazia
+    o cache nunca acertar. O conteudo e o que de fato determina a transcricao, e
+    ler alguns MB por segundo custa muito menos que retranscrever.
+    """
     basis = "|".join(
         [
             provider,
             model,
-            str(file_path.resolve()).lower(),
-            str(stat.st_size),
-            str(int(stat.st_mtime)),
+            str(file_path.stat().st_size),
+            _file_fingerprint(file_path),
         ]
     )
-    return hashlib.sha1(basis.encode("utf-8")).hexdigest()
+    return hashlib.sha1(basis.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def transcript_to_cache(transcript: NormalizedTranscriptResult) -> dict:
@@ -112,6 +138,9 @@ def transcript_to_cache(transcript: NormalizedTranscriptResult) -> dict:
             }
             for item in transcript.utterances
         ],
+        # Preserva o flag de diarizacao e o dispositivo: sem isso, um acerto de
+        # cache reexibe os avisos errados no relatorio.
+        "raw_metadata": dict(transcript.raw_metadata or {}),
     }
 
 
@@ -133,4 +162,5 @@ def transcript_from_cache(data: dict, source_path: Path) -> NormalizedTranscript
             )
             for item in data.get("utterances") or []
         ],
+        raw_metadata=dict(data.get("raw_metadata") or {}),
     )

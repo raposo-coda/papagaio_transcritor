@@ -8,3 +8,14 @@ files.zip
 .transcritoria_data/
 output/
 data/
+README.md
+LICENSE
+*.bat
+instalar-linux-mac.sh
+.env
+.github/
+SECURITY.md
+# Logo em tamanho grande: so o README usa. A aplicacao serve static/logo.png.
+assets/
+*.png
+!static/*.png

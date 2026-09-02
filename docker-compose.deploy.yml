@@ -1,0 +1,73 @@
+# Sobreposicao do modo servidor: a maquina fica hospedando o aplicativo para a
+# rede local, sob systemd, com os dados num disco separado.
+#
+# Nao use este arquivo a mao. Quem monta a lista de -f e o scripts/deploy.sh,
+# instalado por scripts/instalar-servico-linux.sh. Documentacao: deploy/README.md
+#
+# Ordem: docker-compose.yml -> docker-compose.rede.yml -> este -> (gpu.yml)
+name: papagaio
+
+services:
+  papagaio-transcritor:
+    build:
+      context: .
+      args:
+        # As bibliotecas CUDA entram na imagem SEMPRE, mesmo quando a GPU nao
+        # vai ser usada. Assim, cair para CPU e so deixar de passar o
+        # docker-compose.gpu.yml: recria o container em segundos, em vez de
+        # reconstruir a imagem (uns 10 minutos) no meio de uma falha.
+        WITH_CUDA: "1"
+
+    # Quem controla o ciclo de vida e o papagaio.service, nao o dockerd.
+    #
+    # Com "unless-stopped", o daemon sobe o container assim que inicia -- e ele
+    # nao tem como saber se /mnt/container-data ja foi montado. Se nao foi, o
+    # Docker CRIA os diretorios de bind como root por cima do ponto de montagem
+    # e o aplicativo passa a gravar transcricoes no disco do sistema, em
+    # silencio, ate alguem reparar. O systemd sabe esperar o mount (e conferir
+    # que ele existe, via AssertPathIsMountPoint).
+    #
+    # Contrapartida: se o container morrer sozinho, ninguem o levanta na hora.
+    # Quem reconcilia e o papagaio-deploy.timer, que roda a cada 30 minutos.
+    restart: "no"
+
+    # Sem !override de proposito: o Compose deduplica volumes pelo destino
+    # (verificado com `docker compose config` no Compose 5.5.0), entao estes
+    # tres substituem os do arquivo base. Em `ports` a regra e outra -- as
+    # listas somam --, e por isso o docker-compose.rede.yml precisa do
+    # !override e este arquivo nao.
+    volumes:
+      - ${PAPAGAIO_BASE:?defina PAPAGAIO_BASE (o deploy.sh define)}/data:/app/data
+      - ${PAPAGAIO_BASE}/output:/app/output
+      - ${PAPAGAIO_BASE}/models:/app/models
+
+    environment:
+      # O disco de dados e NTFS. O cache do huggingface_hub liga blobs/ e
+      # snapshots/ por symlink -- funciona no ntfs3 desta maquina (testado),
+      # mas e a peca mais fragil do conjunto e uma falha ali some com os
+      # modelos. Copiar em vez de linkar custa uns 3 GB e elimina o risco.
+      HF_HUB_DISABLE_SYMLINKS: "1"
+
+    healthcheck:
+      # A imagem e python:3.11-slim: nao tem curl nem wget. E com
+      # PAPAGAIO_TOKEN definido, /api/meta responde 401 sem credencial -- por
+      # isso o cabecalho. Sem este healthcheck o deploy.sh nao consegue
+      # distinguir "o container iniciou" de "o aplicativo responde", que e o
+      # que habilita o rollback automatico.
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import os, urllib.request
+          req = urllib.request.Request(
+              "http://127.0.0.1:8000/api/meta",
+              headers={"x-papagaio-token": os.environ.get("PAPAGAIO_TOKEN", "")},
+          )
+          urllib.request.urlopen(req, timeout=5).read()
+      interval: 30s
+      timeout: 10s
+      # A primeira subida carrega o modelo Whisper; 90s evita marcar unhealthy
+      # antes da hora.
+      start_period: 90s
+      retries: 3

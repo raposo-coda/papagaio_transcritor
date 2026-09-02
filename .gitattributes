@@ -1,0 +1,20 @@
+# Este repositorio e editado em Linux e em Windows (o disco e compartilhado
+# entre os dois sistemas). Sem isto, abrir um arquivo no Windows reescreve o
+# arquivo inteiro em CRLF e o `git diff` vira um mar de mudancas falsas -- foi
+# exatamente o que aconteceu com gemini_client.py, logger.py e os .bat.
+#
+# Regra: LF no repositorio, sempre. O working tree recebe o que o sistema usa.
+* text=auto eol=lf
+
+# Excecao: os .bat sao clicados no Explorer do Windows. O cmd.exe tolera LF,
+# mas linhas continuadas e `goto` ficam imprevisiveis -- CRLF no disco e o
+# formato nativo e nao custa nada, porque no repositorio continua LF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binarios: nunca normalizar.
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary
+*.onnx binary

@@ -1,8 +1,24 @@
 __pycache__/
 *.pyc
+.venv/
 .papagaio_transcritor_data/
 .transcritoria_data/
 output/
 data/
 .env
-.venv/
+files.zip
+
+# Audios de referencia baixados para testar a diarizacao (nao versionar binarios)
+testes/
+
+# Configuracao do editor
+.zed/
+
+# Configuracao local do Claude Code (permissoes desta maquina, nao do projeto).
+.claude/settings.local.json
+
+# Imagens soltas na raiz: rascunhos de logo gerados por IA, nao entram no
+# repositorio. O que a interface usa de verdade fica em static/.
+/*.png
+/*.jpg
+/*.jpeg

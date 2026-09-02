@@ -4,134 +4,489 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Papagaio Transcritor</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png" />
+  <link rel="apple-touch-icon" href="/static/logo.png" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
+
+  <!-- ===================== CABECALHO ===================== -->
   <header>
-    <h1 id="app-title">Papagaio Transcritor</h1>
-    <div class="subtitle">Transcricao em lote com Gemini ou Whisper local</div>
-    <div class="version" id="app-version"></div>
+    <!-- alt vazio de proposito: o titulo ao lado ja diz o nome. -->
+    <img id="app-logo" src="/static/logo.png" alt="" width="40" height="40" />
+
+    <div class="marca">
+      <div class="marca-nome" id="app-title">Papagaio Transcritor</div>
+      <div class="marca-versao" id="app-version"></div>
+    </div>
+
+    <!-- As abas de modo saem do meio da pagina para o topo: e a primeira
+         decisao do usuario e a que determina para onde o conteudo dele vai. -->
+    <div class="abas-modo" role="tablist" aria-label="Modo de processamento">
+      <button type="button" class="aba-modo" id="mode-local" role="tab" aria-selected="true">
+        <span class="aba-glifo">&#9635;</span>
+        <span class="aba-texto">
+          <span class="aba-rotulo">LOCAL</span>
+          <span class="aba-sub">nada sai daqui</span>
+        </span>
+      </button>
+      <button type="button" class="aba-modo" id="mode-cloud" role="tab" aria-selected="false">
+        <span class="aba-glifo">&#9651;</span>
+        <span class="aba-texto">
+          <span class="aba-rotulo">NUVEM</span>
+          <span class="aba-sub">envia ao Google</span>
+        </span>
+      </button>
+    </div>
+
+    <div class="medidor">
+      <div class="medidor-rotulo">Fila</div>
+      <div class="medidor-valor" id="fila-resumo">vazia</div>
+    </div>
+    <div class="divisor-vertical"></div>
+    <div class="medidor">
+      <div class="medidor-rotulo">Tempo estimado</div>
+      <div class="medidor-valor destaque" id="estimativa">--</div>
+    </div>
+
+    <button type="button" class="btn-iniciar" id="start-btn" disabled>Iniciar</button>
+
+    <button type="button" class="btn-quadrado" id="config-btn" title="Ajustes avancados">&#9881;</button>
+    <button type="button" class="btn-quadrado" id="help-btn" title="Como usar">?</button>
   </header>
 
+  <!-- ===================== CORPO ===================== -->
   <main>
-    <div class="col-left">
-      <section class="block">
-        <div class="section-title">Motor de transcricao</div>
-        <div class="row">
-          <div class="field">
-            <label for="provider-select">Provider</label>
-            <select id="provider-select"></select>
-          </div>
-        </div>
-        <div class="hint" id="provider-hint"></div>
-      </section>
 
-      <section class="block" id="whisper-block">
-        <div class="section-title">Whisper local</div>
-        <div class="row">
-          <div class="field">
-            <label for="whisper-model">Modelo</label>
-            <select id="whisper-model"></select>
-          </div>
-          <div class="field">
-            <label for="whisper-device">Dispositivo</label>
-            <select id="whisper-device"></select>
-          </div>
-        </div>
-        <div class="row">
-          <div class="field">
-            <label for="whisper-diarization">
-              <input type="checkbox" id="whisper-diarization" /> Identificar falantes (pyannote)
-            </label>
-          </div>
-          <div class="field">
-            <label for="whisper-num-speakers">Numero de falantes (0 = automatico)</label>
-            <input type="number" id="whisper-num-speakers" min="0" step="1" />
-          </div>
-        </div>
-        <div class="field">
-          <label for="hf-token">Token HuggingFace (necessario para diarizacao)</label>
-          <input type="password" id="hf-token" placeholder="Deixe em branco para manter o atual" />
-        </div>
-        <div class="api-status" id="whisper-status"></div>
-        <div class="hint">
-          Gere o token em huggingface.co/settings/tokens e aceite os termos em
-          huggingface.co/pyannote/speaker-diarization-3.1. Os pesos sao baixados no primeiro uso.
-        </div>
-      </section>
+    <!-- ---------- coluna esquerda ---------- -->
+    <section class="coluna coluna-esq">
+      <div class="cartao">
+        <div class="cartao-titulo">1. Ajustes da transcricao</div>
 
-      <section class="block" id="gemini-block">
-        <div class="section-title">Gemini</div>
-        <div class="row">
-          <div class="field">
-            <label for="api-key">API key</label>
-            <input type="password" id="api-key" placeholder="Deixe em branco para manter a atual" />
-          </div>
+        <div class="campo">
+          <label for="lang-select">Idioma falado</label>
+          <select id="lang-select" class="entrada borda-neutra"></select>
         </div>
-        <div class="row">
-          <div class="field" id="transcription-model-field">
-            <label for="transcription-model">Modelo de transcricao</label>
-            <input type="text" id="transcription-model" />
-          </div>
-          <div class="field">
-            <label for="summary-model">Modelo de resumo</label>
-            <input type="text" id="summary-model" />
-          </div>
-        </div>
-        <button class="small" id="save-config-btn">Salvar configuracao</button>
-        <div class="api-status" id="api-status"></div>
-        <div class="hint" id="gemini-hint">Gere uma API key gratuita em aistudio.google.com com sua conta Google.</div>
-      </section>
 
-      <section class="block">
-        <div class="section-title">Configuracao geral</div>
-        <div class="row">
-          <div class="field">
-            <label for="lang-select">Idioma</label>
-            <select id="lang-select"></select>
+        <div class="campo">
+          <div class="linha-toggle">
+            <span class="toggle-rotulo">Separar falantes</span>
+            <button type="button" class="toggle" id="local-diarize-toggle"
+                    role="switch" aria-checked="true" aria-label="Separar falantes">
+              <span class="toggle-esfera"></span>
+            </button>
           </div>
-          <div class="field">
-            <label for="summary-enabled">
-              <input type="checkbox" id="summary-enabled" /> Gerar resumo consolidado
-            </label>
+          <div class="aviso-curto hidden" id="diarize-aviso"></div>
+
+          <div class="sub-campo" id="speakers-field">
+            <span class="sub-rotulo">Quantas pessoas falam</span>
+            <div class="botoes-quantidade" id="speakers-buttons"></div>
           </div>
         </div>
-        <div class="hint" id="summary-hint"></div>
-      </section>
 
-      <section class="block">
-        <div class="section-title">Sessao</div>
-        <div class="field">
-          <label for="title-input">Nome do relatorio consolidado (opcional)</label>
-          <input type="text" id="title-input" />
+        <div class="campo">
+          <div class="linha-toggle">
+            <span class="toggle-rotulo">Gerar resumo</span>
+            <button type="button" class="toggle" id="summary-toggle"
+                    role="switch" aria-checked="true" aria-label="Gerar resumo">
+              <span class="toggle-esfera"></span>
+            </button>
+          </div>
+          <div class="aviso-curto hidden" id="summary-aviso"></div>
         </div>
-        <div class="field">
-          <label for="context-input">Contexto, participantes ou foco da analise (opcional)</label>
-          <textarea id="context-input" rows="4"></textarea>
-        </div>
-      </section>
 
-      <section class="block">
-        <div class="section-title">Arquivos</div>
+        <div class="campo mode-only-local" id="campo-modelo">
+          <div class="campo-cabecalho">
+            <label for="local-model-select">Modelo local</label>
+            <span class="campo-nota" id="hardware-resumo"></span>
+          </div>
+          <select id="local-model-select" class="entrada borda-neutra"></select>
+        </div>
+
+        <div class="linha-chave mode-only-cloud hidden" id="linha-chave">
+          <span class="chave-texto" id="chave-estado"></span>
+          <button type="button" class="btn-mini" id="trocar-chave-btn">Trocar</button>
+        </div>
+      </div>
+
+      <div class="cartao cartao-cresce">
+        <div class="cartao-titulo">2. Sobre esta sessao <span class="titulo-nota">(opcional)</span></div>
+
+        <div class="campo">
+          <label for="title-input">Nome do relatorio</label>
+          <input type="text" id="title-input" class="entrada borda-neutra"
+                 placeholder="Reuniao comercial - marco" />
+        </div>
+
+        <div class="campo campo-cresce">
+          <label for="context-input">Quem fala e o que interessa</label>
+          <textarea id="context-input" class="entrada borda-neutra"
+                    placeholder="Ana (gerente) e Bruno (cliente). Foque nos acordos e prazos."></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- coluna central ---------- -->
+    <section class="coluna coluna-centro">
+      <div class="cartao cartao-cresce">
+        <div class="cartao-titulo com-acao">
+          <span>3. Arquivos</span>
+          <button type="button" class="btn-mini btn-apaga" id="clear-files-btn" disabled>Limpar fila</button>
+        </div>
+
         <input type="file" id="file-input" multiple />
-        <button id="add-files-btn">+ Adicionar arquivos</button>
+        <div id="dropzone">
+          <div class="dropzone-titulo">Arraste audios e videos aqui</div>
+          <button type="button" class="btn-cheio" id="add-files-btn">+ Adicionar arquivos</button>
+          <div class="dropzone-formatos" id="formats-hint"></div>
+        </div>
+
         <ul id="file-list"></ul>
-      </section>
+      </div>
 
-      <section class="block">
-        <button class="primary" id="start-btn" style="width:100%">Iniciar transcricao</button>
+      <div class="cartao">
+        <div class="cartao-titulo com-acao">
+          <span>4. Relatorios prontos</span>
+          <span class="campo-nota" id="destino-resumo"></span>
+        </div>
         <div id="results"></div>
-      </section>
-    </div>
+      </div>
+    </section>
 
-    <div class="col-right">
-      <div class="section-title">Log</div>
-      <div id="log-box"></div>
-      <button class="small" id="clear-log-btn" style="margin-top:8px">Limpar</button>
-    </div>
+    <!-- ---------- coluna direita ---------- -->
+    <section class="coluna coluna-dir">
+      <!-- O painel longo de auditoria virou um cartao de uma linha: o que o
+           usuario precisa saber a todo momento e se o conteudo sai ou nao.
+           O detalhamento completo continua no guia. -->
+      <div class="cartao-auditoria" id="audit-card">
+        <div class="auditoria-cabecalho">
+          <span class="auditoria-glifo" id="audit-glifo"></span>
+          <span class="auditoria-titulo" id="audit-titulo"></span>
+        </div>
+        <div class="auditoria-linha" id="audit-linha"></div>
+      </div>
+
+      <div class="cartao cartao-cresce">
+        <div class="cartao-titulo com-acao">
+          <span>Log</span>
+          <button type="button" class="btn-mini" id="clear-log-btn">Limpar</button>
+        </div>
+        <div id="log-box"></div>
+      </div>
+    </section>
   </main>
 
-  <div id="status-bar">Pronto.</div>
+  <!-- ===================== RODAPE ===================== -->
+  <footer>
+    <div class="status" id="status-bar">Pronto.</div>
+    <div class="legenda">
+      <span><i class="cor-acao-bg"></i>mexa aqui</span>
+      <span><i class="cor-local-bg"></i>fica na maquina</span>
+      <span><i class="cor-nuvem-bg"></i>sai da maquina</span>
+      <span><i class="cor-neutra-bg"></i>ja configurado</span>
+      <span><i class="cor-apaga-bg"></i>apaga coisas</span>
+    </div>
+  </footer>
+
+  <!-- ===================== MODAL DE AJUSTES ===================== -->
+  <div id="config-overlay" class="overlay hidden">
+    <div class="modal modal-config">
+      <div class="modal-cabecalho">
+        <div class="modal-titulo">Ajustes que voce configura uma vez</div>
+        <button type="button" class="btn-fechar" id="config-close" title="Fechar">&#215;</button>
+      </div>
+
+      <div class="campo">
+        <label for="output-dir">Pasta de destino</label>
+        <input type="text" id="output-dir" class="entrada borda-neutra" />
+        <div class="hint" id="output-dir-hint"></div>
+      </div>
+
+      <div class="campo">
+        <label for="api-key">Chave do Gemini <span class="marca-nuvem">(so no modo nuvem)</span></label>
+        <input type="password" id="api-key" class="entrada borda-nuvem" placeholder="AIza..." />
+        <div class="hint">
+          Gratuita em
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.
+          Em branco mantem a chave atual.
+        </div>
+        <div class="api-status" id="api-status"></div>
+      </div>
+
+      <details class="avancado">
+        <summary>Modelos do Gemini (pode ignorar)</summary>
+        <div class="linha-dupla">
+          <div class="campo">
+            <label for="transcription-model">Transcricao</label>
+            <input type="text" id="transcription-model" class="entrada borda-neutra" />
+          </div>
+          <div class="campo">
+            <label for="summary-model">Resumo</label>
+            <input type="text" id="summary-model" class="entrada borda-neutra" />
+          </div>
+        </div>
+      </details>
+
+      <div class="modal-rodape">
+        <button type="button" class="btn-fantasma" id="config-cancel">Cancelar</button>
+        <button type="button" class="btn-cheio" id="config-save">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL DE AJUDA (curto) ===================== -->
+  <div id="help-overlay" class="overlay hidden">
+    <div class="modal modal-ajuda">
+      <div class="ajuda-cabecalho">
+        <img src="/static/logo.png" alt="" width="64" height="64" class="ajuda-logo" />
+        <div class="ajuda-titulo">Tres passos</div>
+        <button type="button" class="btn-fechar" id="help-close" title="Fechar">&#215;</button>
+      </div>
+
+      <ol class="ajuda-passos">
+        <li>Escolha <strong class="cor-local">LOCAL</strong> (nada sai daqui) ou
+          <strong class="cor-nuvem">NUVEM</strong> (envia ao Google, resume melhor).</li>
+        <li>Arraste seus audios e videos.</li>
+        <li>Clique em <strong class="cor-acao">INICIAR</strong> e baixe os .md no fim.</li>
+      </ol>
+
+      <div class="ajuda-nota">
+        O resto tem padrao que funciona. As cores na tela dizem o que pedir atencao:
+        ciano voce mexe, verde fica na maquina, amarelo sai da maquina, cinza ja esta resolvido.
+      </div>
+
+      <div class="modal-rodape">
+        <button type="button" class="btn-fantasma" id="ver-guia-btn">Ver guia completo</button>
+        <button type="button" class="btn-cheio" id="help-ok">Entendi</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="guide-overlay" class="overlay hidden">
+    <div class="guide">
+      <button class="guide-close" id="guide-close" title="Fechar">x</button>
+      <div class="guide-header">
+        <img class="guide-logo" src="/static/logo.png" alt="" width="96" height="96" />
+        <h2>Bem-vindo ao Papagaio Transcritor</h2>
+      </div>
+      <p class="guide-lead">
+        Ele pega seus audios e videos (reunioes, aulas, entrevistas, podcasts) e devolve
+        um relatorio em texto com o que foi dito, mais um panorama do conteudo.
+      </p>
+
+      <div class="guide-modes">
+        <div class="guide-mode">
+          <div class="guide-mode-title">Modo local</div>
+          <p>
+            A transcricao roda dentro do seu computador, com o modelo Whisper.
+            <strong>Nenhum arquivo e nenhum texto sai da maquina.</strong>
+            Separa os falantes pela voz, tambem offline. Mais lento que a nuvem e sem resumo interpretativo.
+          </p>
+        </div>
+        <div class="guide-mode">
+          <div class="guide-mode-title">Modo nuvem</div>
+          <p>
+            Os arquivos sao enviados ao Google Gemini. Mais rapido, sabe usar os nomes ditos
+            e escreve um resumo analitico. <strong>Exige que o conteudo saia do computador.</strong>
+          </p>
+        </div>
+      </div>
+      <p class="guide-lead">
+        Voce escolhe nas abas <em>LOCAL</em> e <em>NUVEM</em>, no topo da tela, e pode trocar
+        quando quiser. O cartao colorido no alto da coluna da direita diz, a qualquer momento,
+        se o conteudo sai ou nao da maquina no modo ativo.
+      </p>
+
+      <ol class="guide-steps">
+        <li>
+          <strong>Escolha o modo</strong>
+          <p>
+            Nas abas do topo. Se o conteudo for sensivel (dados de pacientes, juridico,
+            informacao confidencial), use <em>LOCAL</em> — ele tambem separa os falantes. Se
+            voce quer velocidade, um resumo bem escrito e falantes chamados pelo nome, use
+            <em>NUVEM</em>.
+          </p>
+        </li>
+        <li>
+          <strong>So no modo nuvem: pegue sua chave do Gemini</strong>
+          <p>
+            A chave e uma senha que autoriza o aplicativo a usar a IA do Google na sua conta.
+            E gratuita para uso normal.
+          </p>
+          <p>
+            Abra <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>,
+            entre com sua conta Google, clique em <em>Create API key</em> e copie o codigo
+            (algo como <code>AIza...</code>). No aplicativo, abra a <em>engrenagem</em> no canto
+            superior direito, cole no campo <em>Chave do Gemini</em> e clique em <em>Salvar</em>.
+            Fica guardado na sua maquina; voce so faz isso uma vez.
+          </p>
+          <p>No modo local nao existe chave nem conta: nada a configurar.</p>
+        </li>
+        <li>
+          <strong>Escolha o idioma falado nos arquivos</strong>
+          <p>Ajuda a transcricao a acertar as palavras.</p>
+        </li>
+        <li>
+          <strong>Descreva a sessao</strong>
+          <p>
+            De um nome ao relatorio e escreva quem participa e o que interessa. Ex.:
+            <em>"Reuniao de vendas. Participam Ana (gerente) e Bruno (cliente). Foque nos
+            acordos e prazos combinados."</em> No modo nuvem isso melhora bastante o resumo.
+          </p>
+        </li>
+        <li>
+          <strong>Adicione os arquivos e inicie</strong>
+          <p>
+            Arraste para a area do meio, ou clique em <em>Adicionar arquivos</em>. O topo da
+            tela mostra a fila e uma estimativa de tempo antes de comecar. Clique em
+            <em>INICIAR</em> e acompanhe pelo painel <em>Log</em>, a direita. Nao feche a aba
+            enquanto estiver processando.
+          </p>
+        </li>
+        <li>
+          <strong>Baixe os relatorios</strong>
+          <p>
+            Ao terminar, os arquivos aparecem prontos para baixar: um por arquivo enviado e um
+            <em>_consolidado</em> juntando tudo. Quando ha mais de um, aparece tambem um botao
+            para baixar todos de uma vez em <code>.zip</code>. Eles ficam salvos na pasta de
+            destino que voce escolheu na <em>engrenagem</em> — por padrao, dentro dos seus
+            Documentos.
+          </p>
+        </li>
+      </ol>
+
+      <h3>Como funciona por dentro</h3>
+      <ol class="guide-steps method">
+        <li>
+          <strong>Preparacao do arquivo (sempre local)</strong>
+          <p>
+            O ffmpeg le seu arquivo e o normaliza. No modo local ele extrai apenas o audio, em
+            16 kHz mono — que e exatamente o que o Whisper e a separacao de falantes consomem,
+            entao a imagem do video nem chega a ser processada. No modo nuvem gera um mp4
+            padrao, que e o formato que o Gemini aceita. Isso evita erros de formato e faz
+            qualquer extensao aceita funcionar igual. Esta etapa acontece no seu computador
+            nos dois modos.
+          </p>
+        </li>
+        <li>
+          <strong>Transcricao</strong>
+          <p>
+            <em>No modo local:</em> o modelo Whisper roda na sua CPU (ou GPU, se houver uma
+            NVIDIA acessivel) e converte a fala em texto, marcando o instante de cada trecho.
+            Um detector de voz descarta silencios. O tamanho do modelo e escolhido conforme o
+            seu hardware — quanto maior, melhor a precisao e mais lenta a transcricao.
+          </p>
+          <p>
+            <em>No modo nuvem:</em> o mp4 e enviado aos servidores do Google, e o Gemini
+            devolve a transcricao ja dividida por falante, em formato estruturado.
+          </p>
+        </li>
+        <li>
+          <strong>Separacao dos falantes (modo local)</strong>
+          <p>
+            Em paralelo a transcricao, dois modelos pequenos analisam o audio aqui na maquina:
+            o primeiro corta a gravacao nos pontos em que a voz muda; o segundo transforma cada
+            trecho num conjunto de numeros que descreve o timbre daquela voz. Trechos com timbre
+            parecido sao agrupados, e cada grupo vira um falante.
+          </p>
+          <p>
+            Depois, cada palavra transcrita e atribuida ao falante que ocupava aquele instante —
+            por isso uma frase em que duas pessoas se atropelam e cortada no ponto certo, em vez
+            de ir inteira para a pessoa errada.
+          </p>
+          <p>
+            O que o aplicativo compara e a <em>voz</em>, nao a identidade: ele sabe que sao
+            pessoas diferentes, mas nao sabe os nomes delas. E a comparacao vale so dentro
+            daquela gravacao — nada e guardado nem reconhecido entre arquivos.
+          </p>
+        </li>
+        <li>
+          <strong>Montagem do relatorio</strong>
+          <p>
+            Os trechos viram um arquivo Markdown com metadados (duracao, idioma, palavras,
+            modelo usado) e a transcricao com marcacao de tempo.
+          </p>
+        </li>
+        <li>
+          <strong>Panorama consolidado</strong>
+          <p>
+            <em>No modo nuvem:</em> todas as transcricoes, mais o contexto que voce escreveu,
+            vao ao Gemini, que escreve um relatorio analitico (resumo, pontos-chave, decisoes).
+          </p>
+          <p>
+            <em>No modo local:</em> o aplicativo calcula um panorama a partir do proprio texto —
+            duracao, contagem de palavras, termos recorrentes e trechos reais. E estatistica,
+            nao interpretacao: nenhuma IA e nenhuma rede envolvidas.
+          </p>
+        </li>
+        <li>
+          <strong>Cache</strong>
+          <p>
+            Cada arquivo transcrito e guardado com uma assinatura (caminho, tamanho, data,
+            modo e modelo). Reenviar o mesmo arquivo nas mesmas condicoes reaproveita o
+            resultado na hora, sem reprocessar e sem custo.
+          </p>
+        </li>
+      </ol>
+
+      <h3>Perguntas comuns</h3>
+      <dl class="faq">
+        <dt>Que formatos posso enviar?</dt>
+        <dd id="guide-formats">Audio e video nos formatos mais comuns.</dd>
+
+        <dt>Isso custa dinheiro?</dt>
+        <dd>
+          O aplicativo e gratuito e de codigo aberto (licenca MIT). O modo local nao custa nada
+          e nao depende de conta nenhuma. O modo nuvem usa o Gemini, que tem um plano gratuito
+          para uso normal; volumes grandes podem entrar na cobranca do Google.
+        </dd>
+
+        <dt>No modo local realmente nao sai nada?</dt>
+        <dd>
+          O audio, o video e o texto nunca saem da maquina. A unica excecao e o download do
+          modelo Whisper na primeira vez que voce usa um tamanho — sao arquivos do modelo
+          vindo de um repositorio publico, sem nada seu no caminho. Feito isso, o modo local
+          funciona com a internet desligada. O cartao colorido no alto da coluna da direita
+          mostra isso a qualquer momento.
+        </dd>
+
+        <dt>Como funciona a separacao de falantes no modo local?</dt>
+        <dd>
+          O aplicativo compara o timbre das vozes e agrupa os trechos parecidos, tudo offline.
+          Ele acerta bem em audio limpo com pessoas que se revezam. Erra mais quando as vozes
+          sao muito parecidas, quando duas pessoas falam por cima uma da outra por muito tempo,
+          ou em gravacoes ruins (telefone, microfone distante). Se voce souber quantas pessoas
+          participam, informe no campo <em>Quantas pessoas falam</em> — melhora bastante.
+        </dd>
+
+        <dt>Por que os falantes se chamam "Falante 1" e nao pelos nomes?</dt>
+        <dd>
+          Porque o modo local reconhece <em>vozes</em>, nao pessoas: ele sabe que sao tres
+          participantes diferentes, mas nao tem como saber os nomes. Renomeie no arquivo
+          <code>.md</code> depois, ou use o modo nuvem, onde o Gemini aproveita os nomes ditos
+          durante a conversa.
+        </dd>
+
+        <dt>Enviei o mesmo arquivo duas vezes. Vai processar de novo?</dt>
+        <dd>
+          Nao — o cache devolve o resultado na hora. Trocar de modo, de modelo, ou mexer na
+          separacao de falantes gera uma entrada nova.
+        </dd>
+
+        <dt>Deu erro. E agora?</dt>
+        <dd>
+          Leia a ultima linha vermelha do <em>Log</em>. No modo nuvem, os motivos comuns sao chave
+          de API errada, falta de internet ou limite da conta Google. No modo local, costuma ser
+          falta de espaco em disco para o modelo ou memoria insuficiente — nesse caso escolha um
+          modelo menor.
+        </dd>
+      </dl>
+
+      <div class="guide-actions">
+        <button class="primary" id="guide-start">Entendi, vamos comecar</button>
+      </div>
+    </div>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>

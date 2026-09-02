@@ -9,21 +9,45 @@ O log é escrito simultaneamente em:
 """
 
 import logging
+import os
 import sys
+import threading
 import traceback
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
 
 try:
-    from .config import APP_DATA_DIR
+    from .config import APP_DATA_DIR, LOG_RETENTION_FILES
 except ImportError:
-    from config import APP_DATA_DIR  # type: ignore
+    from config import APP_DATA_DIR, LOG_RETENTION_FILES  # type: ignore
 
 
 # ── Diretório de logs ─────────────────────────────────────────────────────────
 LOG_DIR = APP_DATA_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+# Nível do que vai para o stdout. DEBUG despeja caminhos e metadados no terminal
+# (e em `docker compose logs`), então o padrão é INFO.
+STDOUT_LEVEL = getattr(logging, os.environ.get("PAPAGAIO_LOG_LEVEL", "INFO").upper(), logging.INFO)
+
+
+def prune_old_logs(keep: int = LOG_RETENTION_FILES):
+    """
+    Mantém só os `keep` logs de sessão mais recentes.
+
+    Os logs registram nomes de arquivo e títulos de sessão — que identificam de
+    quem é a gravação — então acumulá-los para sempre é retenção de dado pessoal
+    sem motivo. PAPAGAIO_LOG_RETENTION ajusta o limite.
+    """
+    if keep <= 0:
+        return
+    try:
+        arquivos = sorted(LOG_DIR.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for antigo in arquivos[keep:]:
+            antigo.unlink(missing_ok=True)
+    except OSError:
+        pass  # limpeza é oportunista: nunca deve derrubar uma transcrição
 
 # ── Níveis customizados para exibição na GUI ──────────────────────────────────
 LOG_TAGS = {
@@ -49,17 +73,19 @@ class TranscritorLogger:
     """
 
     def __init__(self):
-        self._gui_callback: Optional[Callable[[str, str], None]] = None
-        self._session_file: Optional[Path] = None
-        self._file_handler: Optional[logging.FileHandler] = None
+        # O callback é por thread: cada job roda na sua, e o log de um nunca
+        # pode cair no registro de outro.
+        self._local = threading.local()
+        self._session_file: Path | None = None
+        self._file_handler: logging.FileHandler | None = None
 
         # Logger Python interno
         self._log = logging.getLogger("transcritor")
         self._log.setLevel(logging.DEBUG)
 
-        # Handler de stdout (DEBUG+)
+        # Handler de stdout
         sh = logging.StreamHandler(sys.stdout)
-        sh.setLevel(logging.DEBUG)
+        sh.setLevel(STDOUT_LEVEL)
         sh.setFormatter(logging.Formatter(
             "%(asctime)s [%(levelname)-8s] %(message)s",
             datefmt="%H:%M:%S",
@@ -73,6 +99,8 @@ class TranscritorLogger:
         if self._file_handler:
             self._log.removeHandler(self._file_handler)
             self._file_handler.close()
+
+        prune_old_logs()
 
         ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         safe = "".join(c if c.isalnum() or c in "_-" else "_" for c in label)[:40]
@@ -90,15 +118,15 @@ class TranscritorLogger:
         self.info(f"=== Sessao iniciada: {label or 'sem titulo'} ===")
         self.info(f"Log em: {self._session_file}")
 
-    def set_gui_callback(self, callback: Callable[[str, str], None]):
+    def set_gui_callback(self, callback: Callable[[str, str], None] | None):
         """
-        Registra função para enviar mensagens à GUI.
-        Assinatura: callback(mensagem: str, tag: str)
+        Registra função para enviar mensagens à GUI, só para a thread atual.
+        Assinatura: callback(mensagem: str, tag: str). Passe None para limpar.
         """
-        self._gui_callback = callback
+        self._local.gui_callback = callback
 
     @property
-    def log_file(self) -> Optional[Path]:
+    def log_file(self) -> Path | None:
         return self._session_file
 
     # ── Métodos de log ────────────────────────────────────────────────────────
@@ -123,7 +151,7 @@ class TranscritorLogger:
         self._log.error(msg)
         self._emit(msg, "err")
 
-    def exception(self, msg: str, exc: Optional[Exception] = None):
+    def exception(self, msg: str, exc: Exception | None = None):
         """Loga erro + traceback completo no arquivo, mensagem curta na GUI."""
         tb = traceback.format_exc() if exc is None else (
             "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
@@ -148,10 +176,11 @@ class TranscritorLogger:
     # ── Interno ───────────────────────────────────────────────────────────────
 
     def _emit(self, msg: str, tag: str):
-        """Envia mensagem ao callback da GUI se registrado."""
-        if self._gui_callback:
+        """Envia mensagem ao callback da GUI registrado por esta thread, se houver."""
+        callback = getattr(self._local, "gui_callback", None)
+        if callback:
             try:
-                self._gui_callback(msg, tag)
+                callback(msg, tag)
             except Exception:
                 pass
 

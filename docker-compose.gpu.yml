@@ -1,0 +1,22 @@
+# Sobreposicao opcional: habilita a GPU NVIDIA no modo local.
+#
+# Requisitos: driver NVIDIA atualizado no host e NVIDIA Container Toolkit
+# (no Windows, Docker Desktop com WSL2 ja resolve isso).
+#
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#
+# Sem GPU disponivel, o aplicativo detecta e usa a CPU automaticamente.
+services:
+  papagaio-transcritor:
+    build:
+      context: .
+      args:
+        WITH_CUDA: "1"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

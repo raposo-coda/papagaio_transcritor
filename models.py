@@ -54,15 +54,14 @@ class GeminiConfig:
 
 
 @dataclass
-class WhisperConfig:
-    model: str = ""
-    device: str = "auto"  # auto | cpu | cuda
-    compute_type: str = ""  # vazio = int8 na cpu, float16 na gpu
-    diarization: bool = True
-    hf_token: str = ""
-    num_speakers: int = 0  # 0 = deixar o pyannote decidir
-    min_speakers: int = 0
-    max_speakers: int = 0
+class LocalConfig:
+    """Configuracao do modo local (Whisper offline)."""
+
+    model_size: str = "small"
+    device: str = "cpu"
+    compute_type: str = "int8"
+    diarize: bool = True  # separar os falantes (offline, via sherpa-onnx)
+    num_speakers: int = 0  # 0 = descobrir automaticamente
 
 
 @dataclass
@@ -73,6 +72,7 @@ class PipelineRequest:
     title: str
     context_prompt: str
     gemini: GeminiConfig
-    provider: str = "gemini"
-    whisper: WhisperConfig = field(default_factory=WhisperConfig)
-    summary_enabled: bool = True
+    mode: str = "cloud"  # "cloud" (Gemini) ou "local" (Whisper offline)
+    local: LocalConfig = field(default_factory=LocalConfig)
+    summary_enabled: bool = True  # desligado: o consolidado sai so como indice
+    job_id: str = ""  # identifica a execucao; desempata pastas de sessao sem titulo

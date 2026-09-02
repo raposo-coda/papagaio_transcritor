@@ -1,0 +1,15 @@
+[Unit]
+Description=Verifica atualizacoes do Papagaio Transcritor
+
+[Timer]
+# 10 minutos depois do boot: da tempo do papagaio.service subir e da rede
+# assentar antes de falar com o GitHub.
+OnBootSec=10min
+OnUnitActiveSec=30min
+RandomizedDelaySec=5min
+# Esta e uma maquina de mesa, que passa horas desligada. Persistent faz o tique
+# perdido rodar no boot seguinte, em vez de esperar mais 30 minutos.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

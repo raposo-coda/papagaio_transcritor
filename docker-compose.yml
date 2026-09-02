@@ -1,15 +1,31 @@
 services:
   papagaio-transcritor:
-    build:
-      context: .
-      args:
-        # true = inclui faster-whisper + pyannote na imagem (~2 GB a mais)
-        INSTALL_WHISPER: "${INSTALL_WHISPER:-false}"
+    build: .
+    # Publicado so no loopback do host: a API nao tem login, entao nao pode
+    # ficar acessivel para a rede local. Para expor de proposito, troque para
+    # "0.0.0.0:8000:8000" e defina PAPAGAIO_TOKEN abaixo.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./output:/app/output
-      # ./data guarda config.json e o cache de pesos do Whisper/pyannote (HF_HOME),
-      # entao os modelos so sao baixados uma vez.
       - ./data:/app/data
+      # Modelos do modo local (Whisper). Ficam fora da imagem para nao
+      # precisarem ser baixados de novo a cada rebuild.
+      - papagaio-models:/app/models
+    environment:
+      PAPAGAIO_MODELS_DIR: /app/models
+      # Descomente para exigir um token de acesso (obrigatorio se publicar a
+      # porta fora do loopback). Depois acesse http://host:8000/?token=<segredo>
+      # PAPAGAIO_TOKEN: "troque-por-um-segredo-longo"
+    # Sem privilegio extra: o processo ja roda como usuario nao-root na imagem.
+    security_opt:
+      - no-new-privileges:true
+    # Teto de recursos: uma transcricao local pesada nao pode derrubar a maquina.
+    deploy:
+      resources:
+        limits:
+          memory: 8g
     restart: unless-stopped
+
+volumes:
+  papagaio-models:

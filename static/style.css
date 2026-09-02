@@ -1,3 +1,11 @@
+/* ============================================================
+   Papagaio Transcritor - tela unica, sem rolagem de pagina
+
+   Layout: header 76px + main (3 colunas, flex:1) + footer 38px.
+   So tres areas rolam por dentro: lista de arquivos, log e o textarea
+   de contexto. A pagina em si nunca rola.
+   ============================================================ */
+
 :root {
   --bg: #0a0e12;
   --bg-raised: #10161c;
@@ -13,237 +21,899 @@
   --text: #d3f4ee;
   --subtext: #7fa39a;
   --muted: #4a6058;
+
+  /* Codigo de cor - a razao de ser deste redesenho. Os apelidos abaixo dizem
+     o SIGNIFICADO, nao o tom, para o motivo de cada cor ficar explicito no
+     lugar em que ela e usada. A legenda no rodape ensina isso ao usuario. */
+  --cor-acao: var(--accent);     /* voce precisa mexer aqui agora */
+  --cor-local: var(--success);   /* fica na sua maquina */
+  --cor-nuvem: var(--warning);   /* sai da sua maquina */
+  --cor-neutra: var(--muted);    /* ja configurado, pode ignorar */
+  --cor-apaga: var(--accent2);   /* apaga ou e irreversivel */
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
-  background-image:
-    repeating-linear-gradient(180deg, rgba(57, 242, 216, 0.02) 0px, rgba(57, 242, 216, 0.02) 1px, transparent 1px, transparent 3px);
+  background-image: repeating-linear-gradient(
+    180deg,
+    rgba(57, 242, 216, 0.02) 0px,
+    rgba(57, 242, 216, 0.02) 1px,
+    transparent 1px,
+    transparent 3px
+  );
   color: var(--text);
   font-family: "Consolas", "SFMono-Regular", "JetBrains Mono", monospace;
   font-size: 13px;
 }
 
+a {
+  color: var(--accent);
+}
+
+a:hover {
+  color: var(--accent2);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ============================================================
+   Cabecalho
+   ============================================================ */
+
 header {
-  background: var(--bg-raised);
-  padding: 14px 20px;
+  flex-shrink: 0;
+  height: 76px;
   display: flex;
-  align-items: baseline;
-  gap: 14px;
+  align-items: center;
+  gap: 20px;
+  padding: 0 22px;
+  background: var(--bg-raised);
   border-bottom: 1px solid var(--border-bright);
   box-shadow: 0 1px 12px -4px rgba(57, 242, 216, 0.35);
 }
 
-header h1 {
-  font-size: 17px;
+#app-logo {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 7px rgba(57, 242, 216, 0.35));
+}
+
+.marca {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.marca-nome {
+  font-size: 16px;
   color: var(--accent);
-  margin: 0;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   text-shadow: 0 0 8px rgba(57, 242, 216, 0.45);
+  white-space: nowrap;
 }
 
-header h1::before {
+.marca-nome::before {
   content: "> ";
   color: var(--accent2);
 }
 
-header .subtitle {
-  font-size: 12px;
-  color: var(--subtext);
-}
-
-header .version {
-  margin-left: auto;
+.marca-versao {
   font-size: 11px;
   color: var(--muted);
+  letter-spacing: 0.04em;
 }
+
+/* --- abas de modo --- */
+.abas-modo {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg);
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.aba-modo {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  text-transform: uppercase;
+  transition: background 0.15s, color 0.15s;
+}
+
+.aba-glifo {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.aba-texto {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.aba-rotulo {
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+
+.aba-sub {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+#mode-local.ativa {
+  background: rgba(77, 255, 158, 0.1);
+  box-shadow: inset 0 0 0 1px var(--cor-local);
+  color: var(--cor-local);
+}
+
+#mode-cloud.ativa {
+  background: rgba(255, 201, 77, 0.1);
+  box-shadow: inset 0 0 0 1px var(--cor-nuvem);
+  color: var(--cor-nuvem);
+}
+
+.aba-modo.indisponivel {
+  opacity: 0.55;
+}
+
+/* --- medidores (fila / estimativa) --- */
+.medidor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+  white-space: nowrap;
+}
+
+/* :first-of-type olharia o tipo do elemento (div), e o primeiro div do header
+   e a marca - a regra nunca casaria. Empurrar a partir das abas e direto. */
+.abas-modo {
+  margin-right: auto;
+}
+
+.medidor-rotulo {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.medidor-valor {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.medidor-valor.destaque {
+  color: var(--cor-acao);
+}
+
+.divisor-vertical {
+  width: 1px;
+  height: 44px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   Botoes
+   ============================================================ */
+
+.btn-iniciar {
+  min-width: 210px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid var(--cor-acao);
+  background: var(--cor-acao);
+  color: #05100e;
+  box-shadow: 0 0 18px -6px rgba(57, 242, 216, 0.8);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn-iniciar:disabled {
+  cursor: not-allowed;
+  border-color: var(--border);
+  background: var(--bg-raised);
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.btn-quadrado {
+  cursor: pointer;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 16px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-quadrado:hover {
+  border-color: var(--border-bright);
+  color: var(--accent);
+}
+
+.btn-mini {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg-raised);
+  color: var(--subtext);
+  font-family: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 5px 9px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-mini:hover:not(:disabled) {
+  border-color: var(--border-bright);
+  color: var(--accent);
+}
+
+/* Magenta = apaga coisas. Desabilitado fica inerte, sem convite ao clique. */
+.btn-apaga:not(:disabled) {
+  border-color: var(--cor-apaga);
+  color: var(--cor-apaga);
+  background: transparent;
+}
+
+.btn-apaga:not(:disabled):hover {
+  border-color: var(--cor-apaga);
+  color: var(--cor-apaga);
+  background: rgba(255, 79, 216, 0.08);
+}
+
+.btn-mini:disabled {
+  border-color: var(--border);
+  color: var(--border);
+  background: transparent;
+  cursor: default;
+}
+
+.btn-cheio {
+  cursor: pointer;
+  border: 1px solid var(--cor-acao);
+  border-radius: 2px;
+  background: var(--cor-acao);
+  color: #05100e;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 12px 20px;
+}
+
+.btn-fantasma {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg-raised);
+  color: var(--subtext);
+  font-family: inherit;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 10px 14px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-fantasma:hover {
+  border-color: var(--border-bright);
+  color: var(--accent);
+}
+
+.btn-fechar {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--subtext);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 3px 9px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-fechar:hover {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+/* ============================================================
+   Corpo: tres colunas
+   ============================================================ */
 
 main {
+  flex: 1;
+  min-height: 0;
   display: flex;
   gap: 16px;
-  padding: 16px 20px;
-  max-width: 1400px;
-  margin: 0 auto;
+  padding: 16px 22px;
 }
 
-.col-left {
+.coluna {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.coluna-esq {
+  width: 400px;
+  flex-shrink: 0;
+}
+
+.coluna-centro {
   flex: 1;
   min-width: 0;
 }
 
-.col-right {
-  width: 380px;
+.coluna-dir {
+  width: 440px;
   flex-shrink: 0;
 }
 
-section.block {
-  margin-bottom: 18px;
+.cartao {
   border: 1px solid var(--border);
   background: var(--surface);
-  padding: 12px 14px;
   border-radius: 2px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.section-title {
+.cartao-cresce {
+  flex: 1;
+  min-height: 0;
+}
+
+.cartao-titulo {
   font-size: 11px;
   font-weight: 700;
   color: var(--accent);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  margin: 0 0 12px;
   padding-bottom: 8px;
   border-bottom: 1px dashed var(--border);
+  flex-shrink: 0;
 }
 
-.section-title::before {
+.cartao-titulo::before {
   content: "// ";
   color: var(--muted);
 }
 
-label {
-  display: block;
+.cartao-titulo.com-acao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Com o titulo em flex, o ::before do container viraria um item proprio e o
+   space-between jogaria o texto para o meio. O prefixo passa para o span. */
+.cartao-titulo.com-acao::before {
+  content: none;
+}
+
+.cartao-titulo.com-acao > span:first-child::before {
+  content: "// ";
+  color: var(--muted);
+}
+
+.cartao-titulo .campo-nota {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  max-width: 45%;
+}
+
+.titulo-nota {
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+/* ============================================================
+   Campos
+   ============================================================ */
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.campo-cresce {
+  flex: 1;
+  min-height: 0;
+}
+
+.campo-cabecalho {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.campo-nota {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+label,
+.sub-rotulo {
   font-size: 11px;
   color: var(--subtext);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 4px;
+  letter-spacing: 0.06em;
 }
 
-input[type="text"],
-input[type="password"],
-select,
-textarea {
+.entrada {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 2px;
-  padding: 8px 10px;
-  font-size: 13px;
+  padding: 10px;
+  font-size: 14px;
   font-family: inherit;
 }
 
-input:focus,
-select:focus,
-textarea:focus {
+/* A borda esquerda grossa e onde o codigo de cor aparece em cada campo. */
+.borda-neutra {
+  border-left: 3px solid var(--cor-neutra);
+}
+
+.borda-acao {
+  border-left: 3px solid var(--cor-acao);
+}
+
+.borda-nuvem {
+  border-left: 3px solid var(--cor-nuvem);
+}
+
+.borda-local {
+  border-left: 3px solid var(--cor-local);
+}
+
+.entrada:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent-dim);
 }
 
-textarea {
-  resize: vertical;
-}
-
-.row {
-  display: flex;
-  gap: 10px;
-}
-
-.row > div {
+textarea.entrada {
+  resize: none;
+  line-height: 1.6;
   flex: 1;
+  min-height: 0;
 }
 
-.field {
-  margin-bottom: 10px;
+.hint {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
-button {
-  cursor: pointer;
-  border: 1px solid var(--border);
-  border-radius: 2px;
+.hint.ok-hint {
+  color: var(--success);
+}
+
+.hint.warn-hint {
+  color: var(--warning);
+}
+
+.aviso-curto {
+  font-size: 11px;
+  color: var(--warning);
+  line-height: 1.45;
+}
+
+.api-status {
   font-size: 12px;
-  font-family: inherit;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 9px 14px;
-  background: var(--bg-raised);
+  letter-spacing: 0.03em;
+}
+
+.api-status.ok {
+  color: var(--success);
+}
+
+.api-status.warn {
+  color: var(--warning);
+}
+
+/* --- toggle "separar falantes" --- */
+.linha-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.toggle-rotulo {
+  font-size: 13px;
   color: var(--text);
 }
 
-button:hover {
-  border-color: var(--accent-dim);
-  color: var(--accent);
+.toggle {
+  cursor: pointer;
+  width: 54px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  transition: border-color 0.15s, background 0.15s;
 }
 
-button.primary {
-  background: var(--accent);
-  color: #05100e;
-  font-weight: 700;
-  border-color: var(--accent);
+.toggle[aria-checked="true"] {
+  justify-content: flex-end;
+  border-color: var(--cor-acao);
+  background: rgba(57, 242, 216, 0.15);
 }
 
-button.primary::before {
-  content: "> ";
-}
-
-button.primary:hover {
-  background: var(--accent2);
-  border-color: var(--accent2);
-  color: #17040f;
-}
-
-button.primary:disabled {
+.toggle-esfera {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: block;
   background: var(--muted);
-  border-color: var(--muted);
-  color: var(--bg);
-  cursor: not-allowed;
+  transition: background 0.15s;
 }
 
-button.small {
-  padding: 5px 10px;
-  font-size: 11px;
+.toggle[aria-checked="true"] .toggle-esfera {
+  background: var(--cor-acao);
 }
+
+.toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.sub-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.botoes-quantidade {
+  display: flex;
+  gap: 6px;
+}
+
+.botoes-quantidade button {
+  flex: 1;
+  cursor: pointer;
+  padding: 9px 0;
+  font-family: inherit;
+  font-size: 13px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--subtext);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.botoes-quantidade button.selecionado {
+  border-color: var(--cor-acao);
+  background: rgba(57, 242, 216, 0.1);
+  color: var(--cor-acao);
+}
+
+/* --- linha compacta da chave (modo nuvem) --- */
+.linha-chave {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cor-local);
+  background: var(--bg);
+  border-radius: 2px;
+}
+
+.linha-chave.falta-chave {
+  border-left-color: var(--cor-nuvem);
+}
+
+.chave-texto {
+  font-size: 12px;
+  color: var(--subtext);
+}
+
+.chave-texto b {
+  color: var(--cor-local);
+  font-weight: 400;
+}
+
+.linha-chave.falta-chave .chave-texto b {
+  color: var(--cor-nuvem);
+}
+
+.marca-nuvem {
+  color: var(--cor-nuvem);
+}
+
+/* ============================================================
+   Arquivos
+   ============================================================ */
 
 #file-input {
   display: none;
 }
 
+#dropzone {
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 2px dashed var(--border);
+  border-radius: 2px;
+  background: var(--bg);
+  padding: 26px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+/* Fila vazia = a acao que falta. Com arquivos, a dropzone recua visualmente. */
+#dropzone.pede-acao {
+  border-color: var(--cor-acao);
+  background: rgba(57, 242, 216, 0.05);
+}
+
+#dropzone.dragging {
+  border-color: var(--cor-acao);
+  background: rgba(57, 242, 216, 0.12);
+}
+
+.dropzone-titulo {
+  font-size: 20px;
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+
+.dropzone-formatos {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 #file-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   list-style: none;
-  margin: 8px 0 0;
+  margin: 0;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 2px;
-  min-height: 60px;
-  max-height: 220px;
-  overflow-y: auto;
   background: var(--bg);
 }
 
 #file-list li {
-  padding: 6px 10px;
-  font-size: 12px;
-  border-bottom: 1px solid var(--border);
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--surface);
 }
 
-#file-list li:last-child {
-  border-bottom: none;
+#file-list li.vazio {
+  padding: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  display: block;
 }
 
-#file-list .remove {
-  color: var(--error);
+.arquivo-nome {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arquivo-duracao {
+  font-size: 12px;
+  color: var(--subtext);
+  width: 88px;
+  text-align: right;
+}
+
+.arquivo-tamanho {
+  font-size: 12px;
+  color: var(--muted);
+  width: 80px;
+  text-align: right;
+}
+
+.arquivo-remover {
   cursor: pointer;
-  padding-left: 8px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 3px 9px;
+  transition: border-color 0.15s, color 0.15s;
 }
+
+.arquivo-remover:hover {
+  border-color: var(--cor-apaga);
+  color: var(--cor-apaga);
+}
+
+/* ============================================================
+   Relatorios prontos
+   ============================================================ */
+
+#results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+}
+
+#results a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  border: 1px solid var(--border-bright);
+  border-radius: 2px;
+  background: var(--bg);
+  color: var(--accent);
+  font-size: 12px;
+  padding: 9px 12px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+#results a::before {
+  content: "\2193";
+  color: var(--muted);
+}
+
+#results a:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.results-vazio {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ============================================================
+   Auditoria de privacidade
+   ============================================================ */
+
+.cartao-auditoria {
+  flex-shrink: 0;
+  border-radius: 2px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--cor-local);
+  background: rgba(77, 255, 158, 0.07);
+  color: var(--cor-local);
+}
+
+.cartao-auditoria.sai {
+  border-color: var(--cor-nuvem);
+  background: rgba(255, 201, 77, 0.07);
+  color: var(--cor-nuvem);
+}
+
+.auditoria-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auditoria-glifo {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.auditoria-titulo {
+  font-size: 13px;
+  letter-spacing: 0.03em;
+}
+
+.auditoria-linha {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--subtext);
+}
+
+/* ============================================================
+   Log
+   ============================================================ */
 
 #log-box {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 2px;
-  padding: 8px;
-  height: 520px;
-  overflow-y: auto;
-  font-size: 11px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.7;
   white-space: pre-wrap;
+  color: var(--subtext);
 }
 
 #log-box div::before {
@@ -256,55 +926,491 @@ button.small {
 #log-box .err { color: var(--error); }
 #log-box .dim { color: var(--muted); }
 
-#status-bar {
-  padding: 8px 20px;
-  font-size: 12px;
-  color: var(--accent);
+/* ============================================================
+   Rodape
+   ============================================================ */
+
+footer {
+  flex-shrink: 0;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 22px;
   background: var(--bg-raised);
   border-top: 1px solid var(--border-bright);
 }
 
-#status-bar::before {
+footer .status {
+  font-size: 12px;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+footer .status::before {
   content: "> ";
   color: var(--accent2);
 }
 
-#results {
-  margin-top: 10px;
-  font-size: 12px;
+/* O status tambem diz o que falta para poder iniciar; quando falta algo, ele
+   deixa de ser informativo e passa a ser instrucao. */
+footer .status.falta {
+  color: var(--warning);
 }
 
-#results strong {
-  color: var(--subtext);
+.legenda {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 11px;
+  color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 11px;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 
-#results a {
-  color: var(--accent);
-  display: block;
-  padding: 3px 0;
+.legenda span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
-#results a::before {
-  content: "-> ";
-  color: var(--muted);
+.legenda i {
+  width: 9px;
+  height: 9px;
+  display: inline-block;
 }
 
-.hint {
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 4px;
+.cor-acao-bg { background: var(--cor-acao); }
+.cor-local-bg { background: var(--cor-local); }
+.cor-nuvem-bg { background: var(--cor-nuvem); }
+.cor-neutra-bg { background: var(--cor-neutra); }
+.cor-apaga-bg { background: var(--cor-apaga); }
+
+.cor-acao { color: var(--cor-acao); }
+.cor-local { color: var(--cor-local); }
+.cor-nuvem { color: var(--cor-nuvem); }
+
+/* ============================================================
+   Overlays e modais
+   ============================================================ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 11, 0.88);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  overflow-y: auto;
 }
 
-.api-status {
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 2px;
+  box-shadow: 0 0 40px -10px rgba(57, 242, 216, 0.35);
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.modal-config {
+  width: 620px;
+  max-width: 100%;
+}
+
+.modal-ajuda {
+  width: 720px;
+  max-width: 100%;
+  padding: 24px 26px;
+  gap: 16px;
+}
+
+.modal-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.modal-titulo {
   font-size: 12px;
-  margin-top: 6px;
-  letter-spacing: 0.03em;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-.api-status.ok { color: var(--success); }
-.api-status.ok::before { content: "[OK] "; }
-.api-status.warn { color: var(--warning); }
-.api-status.warn::before { content: "[!] "; }
+.modal-titulo::before {
+  content: "// ";
+  color: var(--muted);
+}
+
+.modal-rodape {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.linha-dupla {
+  display: flex;
+  gap: 10px;
+}
+
+.linha-dupla .campo {
+  flex: 1;
+}
+
+details.avancado {
+  border: 1px dashed var(--border);
+  border-radius: 2px;
+  padding: 8px 10px;
+  background: var(--bg);
+}
+
+details.avancado > summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  list-style: none;
+}
+
+details.avancado > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.avancado > summary::before {
+  content: "+ ";
+  color: var(--accent-dim);
+}
+
+details.avancado[open] > summary {
+  color: var(--subtext);
+  margin-bottom: 10px;
+}
+
+details.avancado[open] > summary::before {
+  content: "- ";
+}
+
+/* --- modal de ajuda --- */
+.ajuda-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ajuda-logo {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 14px rgba(57, 242, 216, 0.3));
+}
+
+.ajuda-titulo {
+  font-size: 16px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ajuda-titulo::before {
+  content: "> ";
+  color: var(--accent2);
+}
+
+.ajuda-cabecalho .btn-fechar {
+  margin-left: auto;
+}
+
+.ajuda-passos {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 2;
+  color: var(--text);
+}
+
+.ajuda-nota {
+  font-size: 12px;
+  color: var(--subtext);
+  line-height: 1.6;
+}
+
+/* ============================================================
+   Guia completo (mantido: e a documentacao dentro do produto)
+   ============================================================ */
+
+.guide {
+  position: relative;
+  width: 100%;
+  max-width: 760px;
+  background: var(--surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 2px;
+  box-shadow: 0 0 40px -10px rgba(57, 242, 216, 0.35);
+  padding: 26px 30px 24px;
+  margin: auto;
+}
+
+.guide-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 3px 9px;
+  font-size: 12px;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--subtext);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.guide-close:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.guide-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.guide-logo {
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 14px rgba(57, 242, 216, 0.3));
+}
+
+.guide h2 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 8px rgba(57, 242, 216, 0.4);
+}
+
+.guide h2::before {
+  content: "> ";
+  color: var(--accent2);
+}
+
+.guide h3 {
+  margin: 26px 0 10px;
+  font-size: 12px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.guide-lead {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text);
+  margin: 0 0 20px;
+}
+
+.guide-modes {
+  display: flex;
+  gap: 12px;
+  margin: 0 0 18px;
+}
+
+.guide-mode {
+  flex: 1;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  padding: 12px 14px;
+  border-radius: 2px;
+}
+
+.guide-mode-title {
+  font-size: 12px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.guide-mode p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--subtext);
+}
+
+.guide-mode strong {
+  color: var(--text);
+}
+
+ol.guide-steps {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  counter-reset: passo;
+}
+
+ol.guide-steps > li {
+  counter-increment: passo;
+  position: relative;
+  padding: 0 0 16px 40px;
+  margin-bottom: 4px;
+  border-left: 1px solid var(--border);
+  margin-left: 13px;
+}
+
+ol.guide-steps > li:last-child {
+  border-left-color: transparent;
+  padding-bottom: 0;
+}
+
+ol.guide-steps > li::before {
+  content: counter(passo);
+  position: absolute;
+  left: -13px;
+  top: -2px;
+  width: 26px;
+  height: 26px;
+  line-height: 24px;
+  text-align: center;
+  border: 1px solid var(--accent-dim);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+ol.guide-steps > li > strong {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  margin-bottom: 6px;
+  padding-top: 3px;
+}
+
+ol.guide-steps p {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--subtext);
+}
+
+ol.guide-steps em,
+.faq em,
+.guide-lead em {
+  color: var(--accent);
+  font-style: normal;
+}
+
+dl.faq {
+  margin: 0;
+  font-size: 12px;
+}
+
+dl.faq dt {
+  color: var(--text);
+  margin-top: 14px;
+  font-weight: 700;
+}
+
+dl.faq dt::before {
+  content: "? ";
+  color: var(--accent2);
+}
+
+dl.faq dd {
+  margin: 5px 0 0;
+  padding-left: 16px;
+  color: var(--subtext);
+  line-height: 1.6;
+  border-left: 1px solid var(--border);
+}
+
+.guide-actions {
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border);
+  text-align: right;
+}
+
+.guide-actions button {
+  cursor: pointer;
+  border: 1px solid var(--cor-acao);
+  border-radius: 2px;
+  background: var(--cor-acao);
+  color: #05100e;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 11px 18px;
+}
+
+code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 1px 4px;
+  font-family: inherit;
+  font-size: 0.95em;
+  color: var(--accent);
+}
+
+/* ============================================================
+   Telas menores
+
+   O alvo e 1920x1080. Abaixo disso a regra de nao rolar continua
+   valendo: as colunas encolhem antes de a pagina ganhar barra.
+   ============================================================ */
+
+@media (max-width: 1700px) {
+  .coluna-esq { width: 340px; }
+  .coluna-dir { width: 360px; }
+  .legenda { gap: 12px; }
+}
+
+@media (max-width: 1400px) {
+  header { gap: 14px; padding: 0 14px; }
+  .aba-sub { display: none; }
+  .btn-iniciar { min-width: 150px; }
+  .legenda span:nth-child(4),
+  .legenda span:nth-child(5) { display: none; }
+  .coluna-esq { width: 300px; }
+  .coluna-dir { width: 320px; }
+}
+
+@media (max-width: 1100px) {
+  /* Abaixo disto nao ha como manter tres colunas sem espremer tudo.
+     A pagina passa a rolar, o que e menos ruim que ilegivel. */
+  html, body { overflow: auto; }
+  main { flex-direction: column; }
+  .coluna-esq,
+  .coluna-dir { width: 100%; }
+  .cartao-cresce { flex: none; }
+  #file-list { max-height: 260px; }
+  #log-box { height: 260px; flex: none; }
+  .legenda { display: none; }
+}

@@ -1,0 +1,83 @@
+# Configuracao das ferramentas de qualidade rodadas no CI (.github/workflows/ci.yml).
+#
+# Sem um conjunto de regras explicito, o ruff usa o padrao da versao instalada -
+# que muda entre releases e faz o CI quebrar sozinho num dia qualquer, sem
+# ninguem ter mexido no codigo.
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+# legacy/ e a versao antiga em tkinter, mantida so como referencia historica.
+# testes/ guarda audios baixados.
+exclude = ["legacy", "testes"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "I",    # ordenacao de imports
+    "UP",   # sintaxe moderna
+    "B",    # bugbear
+    "SIM",  # simplificacoes
+    "S",    # seguranca (bandit)
+    "PL",   # pylint
+    "RUF",
+]
+
+ignore = [
+    # O aplicativo prioriza terminar o trabalho do usuario. Falha ao ler cache,
+    # ao emitir log ou ao criar uma pasta candidata nao pode derrubar uma
+    # transcricao que ja custou minutos de processamento - por isso os
+    # try/except/pass sao deliberados, e cada um tem comentario no lugar.
+    "S110",
+    "S112",
+    # Os relatorios sao lidos por quem gravou o audio, na propria maquina.
+    # Horario local e o que faz sentido ali; UTC so confundiria.
+    "DTZ005",
+    # Textos em portugues no meio do codigo (mensagens de log e de interface)
+    # passam de 110 colunas em alguns pontos sem ganho em quebrar.
+    "E501",
+    # Imports pesados (faster_whisper, sherpa_onnx, google.genai, ctranslate2) sao
+    # carregados dentro das funcoes de proposito: o app precisa subir e mostrar a
+    # interface mesmo quando um dos motores nao esta instalado.
+    "PLC0415",
+    # Caches de modelo em slot unico. Um modelo Whisper ocupa GB; recarregar a cada
+    # arquivo seria inviavel, e o estado global e exatamente o ponto.
+    "PLW0603",
+    # subprocess sempre recebe lista de argumentos, nunca string com shell - que e
+    # justamente a forma segura. A regra dispara em todo uso, seguro ou nao.
+    "S603",
+    # Limiares numericos (capacidade 7.0, VRAM, percentuais) sao mais legiveis no
+    # lugar onde sao usados do que como constantes nomeadas espalhadas.
+    "PLR2004",
+    # Endpoints FastAPI recebem muitos campos de formulario; quebrar em funcoes
+    # menores so para satisfazer a contagem deixaria o codigo pior.
+    "PLR0913", "PLR0917", "PLR0912", "PLR0915",
+    # Preferencias de estilo, nao defeitos: try/except/pass explicito e mais claro
+    # que contextlib.suppress para quem le, e reatribuir a variavel do loop e comum.
+    "SIM105", "RUF005", "PLW2901",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# O modulo de seguranca compara segredos e monta cabecalhos; as construcoes que
+# o bandit sinaliza ali sao o proprio assunto do arquivo.
+"security.py" = ["S105"]
+
+[tool.bandit]
+# Requer bandit[toml]. As exclusoes abaixo sao decisoes de projeto, nao ruido
+# varrido para debaixo do tapete - cada uma tem motivo.
+exclude_dirs = ["legacy", "static", "testes", ".git"]
+skips = [
+    # B404/B603: todo subprocess deste projeto recebe LISTA de argumentos, nunca
+    # string com shell. Essa e a forma segura; a regra dispara mesmo assim.
+    "B404",
+    "B603",
+    # B110/B112: try/except/pass e try/except/continue deliberados. Falhar ao ler
+    # um cache, emitir um log ou testar uma pasta candidata nao pode interromper
+    # uma transcricao que ja custou minutos.
+    "B110",
+    "B112",
+    # B105: TOKEN_COOKIE e TOKEN_HEADER sao NOMES de cookie e de cabecalho, nao
+    # segredos. O segredo em si vem de variavel de ambiente.
+    "B105",
+]

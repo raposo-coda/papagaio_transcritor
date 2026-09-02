@@ -1,6 +1,11 @@
 """
-converter.py - Normaliza qualquer audio/video suportado para .mp4 via ffmpeg
-antes do envio ao Gemini.
+converter.py - Normaliza qualquer audio/video suportado com ffmpeg antes do
+processamento.
+
+Dois destinos, conforme o modo:
+  - nuvem: .mp4, que e o que o Gemini aceita (convert_to_mp4)
+  - local: WAV 16 kHz mono, que e o que o Whisper e a separacao de falantes
+    consomem internamente (convert_to_wav16k)
 """
 
 from __future__ import annotations
@@ -71,11 +76,53 @@ def convert_to_mp4(source_path: Path, out_dir: Path) -> tuple[Path, str]:
         ]
         mime_type = "audio/mp4"
 
-    result = subprocess.run(command, capture_output=True, text=True)
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
     if result.returncode != 0:
+        # O stderr do ffmpeg traz caminhos absolutos e metadados do arquivo. Fica
+        # so no log local; a mensagem que sobe pela API diz o necessario e nada mais.
         log.error(f"  [ffmpeg] stderr:\n{result.stderr}")
-        raise RuntimeError(f"ffmpeg falhou ao converter {source_path.name} (code {result.returncode}): {result.stderr[-400:]}")
+        raise RuntimeError(
+            f"ffmpeg nao conseguiu converter {source_path.name} (codigo {result.returncode}). "
+            "O detalhe tecnico esta no log desta sessao."
+        )
 
     mb_size = out_path.stat().st_size / 1_048_576
     log.ok(f"  [ffmpeg] Convertido: {out_path.name} ({mb_size:.1f} MB)")
     return out_path, mime_type
+
+
+def convert_to_wav16k(source_path: Path, out_dir: Path) -> Path:
+    """
+    Extrai o audio para WAV PCM 16 bits, mono, 16 kHz.
+
+    E o formato que o Whisper e a separacao de falantes usam internamente, entao
+    o modo local converte uma vez so e alimenta os dois. Para arquivos de video
+    isso tambem evita o reencode de imagem do convert_to_mp4, que seria jogado
+    fora em seguida.
+    """
+    ffmpeg_command = get_ffmpeg_command()
+    if not ffmpeg_command:
+        raise RuntimeError("ffmpeg nao encontrado. Necessario para preparar o audio antes da transcricao.")
+
+    out_path = out_dir / f"{source_path.stem}.wav"
+
+    log.info(f"  [ffmpeg] Extraindo audio 16 kHz mono: {source_path.name}")
+    command = [
+        ffmpeg_command, "-y", "-i", str(source_path),
+        "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+        str(out_path),
+    ]
+
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        # O stderr do ffmpeg traz caminhos absolutos e metadados do arquivo. Fica
+        # so no log local; a mensagem que sobe pela API diz o necessario e nada mais.
+        log.error(f"  [ffmpeg] stderr:\n{result.stderr}")
+        raise RuntimeError(
+            f"ffmpeg nao conseguiu extrair o audio de {source_path.name} (codigo {result.returncode}). "
+            "O detalhe tecnico esta no log desta sessao."
+        )
+
+    mb_size = out_path.stat().st_size / 1_048_576
+    log.ok(f"  [ffmpeg] Audio pronto: {out_path.name} ({mb_size:.1f} MB)")
+    return out_path

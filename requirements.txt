@@ -1,4 +1,18 @@
-fastapi>=0.110
-uvicorn[standard]>=0.29
-python-multipart>=0.0.9
-google-genai>=0.3.0
+# Faixas fechadas no proximo major: `>=` aberto deixava o build pegar uma versao
+# nova e incompativel sem ninguem perceber.
+#
+# Para um build totalmente reproduzivel, gere um lockfile com hashes:
+#   pip install pip-tools
+#   pip-compile --generate-hashes --output-file requirements.lock requirements.txt
+# e troque a linha do Dockerfile por:
+#   pip install --no-cache-dir --require-hashes -r requirements.lock
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.29,<1.0
+python-multipart>=0.0.9,<1.0
+pydantic>=2.6,<3.0
+google-genai>=0.3.0,<2.0
+faster-whisper>=1.0.3,<2.0
+# Separacao de falantes offline. Roda em ONNX Runtime; nao puxa PyTorch.
+sherpa-onnx>=1.10,<2.0
+# Chega de carona pelo ctranslate2, mas agora e usado diretamente (leitura do WAV).
+numpy>=1.24,<3.0

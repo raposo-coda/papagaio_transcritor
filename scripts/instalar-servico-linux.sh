@@ -204,6 +204,16 @@ else
 fi
 git -c safe.directory="$REPO" -C "$REPO" log -1 --format='    %h %s' | cat
 
+# Se o branch escolhido ainda nao recebeu o modo servidor, tudo daqui para
+# baixo falharia com "arquivo nao encontrado". Melhor dizer o motivo.
+for necessario in scripts/deploy.sh deploy/papagaio.service docker-compose.deploy.yml; do
+    if [ ! -f "$REPO/$necessario" ]; then
+        vermelho "o branch '$BRANCH' no GitHub nao tem $necessario."
+        vermelho "publique o modo servidor primeiro (git push origin $BRANCH) e rode isto de novo."
+        exit 1
+    fi
+done
+
 # ---------------------------------------------------------------- 6. servico
 
 passo "6/6  Unidades systemd"

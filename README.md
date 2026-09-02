@@ -30,6 +30,7 @@ Tudo roda pelo navegador, na sua propria maquina. Nao precisa saber programar.
 - [O metodo, passo a passo](#o-metodo-passo-a-passo)
 - [O que sai do seu computador](#o-que-sai-do-seu-computador)
 - [Ligar e desligar no dia a dia](#ligar-e-desligar-no-dia-a-dia)
+- [Servidor da casa: deixar sempre no ar](#servidor-da-casa-deixar-sempre-no-ar)
 - [Problemas comuns](#problemas-comuns)
 - [Para desenvolvedores](#para-desenvolvedores)
 - [Licenca](#licenca)
@@ -450,6 +451,35 @@ Os modelos do modo local ficam num volume proprio e **nao** sao baixados de novo
 rebuild.
 
 ---
+
+## Servidor da casa: deixar sempre no ar
+
+O passo anterior deixa o aplicativo alcancavel pela rede *enquanto voce o mantem ligado*. Se a
+ideia e que ele simplesmente **esteja sempre la** — a familia abre o endereco e usa, sem
+depender de voce clicar em nada — existe um modo servidor para Linux:
+
+```bash
+sudo ./scripts/instalar-servico-linux.sh
+```
+
+O instalador monta um disco separado para os dados, registra a GPU no Docker, faz o Docker
+subir no boot e instala tres unidades do systemd. A partir dai:
+
+- o aplicativo sobe sozinho quando a maquina liga (num disco criptografado, assim que a senha
+  for digitada — nao e preciso fazer login);
+- um temporizador olha o GitHub a cada 30 minutos e, quando o branch avanca, reconstroi e
+  troca a versao no ar. Se o build quebrar ou a versao nova nao responder, ele volta atras
+  sozinho e mantem a anterior servindo;
+- os relatorios, os modelos e a configuracao ficam num disco de dados proprio, separados das
+  imagens do Docker.
+
+Os detalhes — o que cada unidade faz, como acompanhar um deploy, como voltar para CPU se a
+GPU falhar, como desinstalar — estao em [`deploy/README.md`](deploy/README.md).
+
+Isto e para uma maquina que voce controla, numa rede domestica. Vale lembrar que a atualizacao
+automatica constroi e executa o que estiver no branch: quem tem acesso ao repositorio tem, na
+pratica, acesso a essa maquina.
+
 
 ## Problemas comuns
 

@@ -1,0 +1,34 @@
+[Unit]
+Description=Papagaio Transcritor (servidor da rede local)
+Documentation=https://github.com/raposo-coda/papagaio_transcritor
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+# Os dados vivem num disco separado, montado em /mnt/container-data. As duas
+# linhas abaixo sao a protecao central deste servico:
+#
+#   RequiresMountsFor      -- ordena e exige a montagem;
+#   AssertPathIsMountPoint -- confere que ali existe MESMO um ponto de montagem.
+#
+# Sem a segunda, um disco ausente faria o Docker criar os diretorios de bind
+# no disco do sistema e o aplicativo gravaria transcricoes num lugar errado,
+# em silencio. O sentinela .container-data-ok e a terceira camada: garante que
+# o disco montado e este disco, e nao outro que por acaso caiu no mesmo lugar.
+RequiresMountsFor=/mnt/container-data
+AssertPathIsMountPoint=/mnt/container-data
+AssertPathExists=/mnt/container-data/.container-data-ok
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/default/papagaio
+ExecStart=/usr/local/lib/papagaio/deploy.sh up
+ExecStop=/usr/local/lib/papagaio/deploy.sh down
+# A primeira subida constroi a imagem e baixa os modelos do Whisper; 30 minutos
+# e folgado de proposito, para nao abortar no meio de um download grande.
+TimeoutStartSec=1800
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,30 @@
+# Sobreposicao opcional: publica o aplicativo na rede local.
+#
+# O padrao do projeto e escutar so em 127.0.0.1, porque quem abre a tela pode
+# ler transcricoes, baixar relatorios e gastar a chave do Gemini. Ao expor na
+# rede, isso vale para qualquer aparelho conectado nela - por isso este arquivo
+# EXIGE um token.
+#
+# Uso:
+#   1. Crie um arquivo .env ao lado deste (nao versionado) com:
+#        PAPAGAIO_TOKEN=<um segredo longo e aleatorio>
+#        PAPAGAIO_ALLOWED_ORIGINS=<ip-desta-maquina-na-rede>
+#   2. Suba com:
+#        docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
+#                       -f docker-compose.rede.yml up -d
+#   3. Acesse de outro aparelho:
+#        http://<ip-desta-maquina>:8000/?token=<seu-token>
+#      O token vira cookie na primeira visita; depois basta o endereco.
+#
+# PAPAGAIO_ALLOWED_ORIGINS existe por causa do CSRF: sem o IP desta maquina na
+# lista, o navegador ate carrega a tela, mas todo POST volta 403.
+services:
+  papagaio-transcritor:
+    # !override troca a lista inteira. Sem ele, o Compose SOMA as listas e
+    # tenta abrir 127.0.0.1 e 0.0.0.0 na mesma porta, o que falha.
+    ports: !override
+      - "0.0.0.0:8000:8000"
+    environment:
+      PAPAGAIO_MODELS_DIR: /app/models
+      PAPAGAIO_TOKEN: ${PAPAGAIO_TOKEN:?defina PAPAGAIO_TOKEN no .env antes de expor na rede}
+      PAPAGAIO_ALLOWED_ORIGINS: ${PAPAGAIO_ALLOWED_ORIGINS:?defina PAPAGAIO_ALLOWED_ORIGINS no .env com o IP desta maquina}

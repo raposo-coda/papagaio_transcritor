@@ -110,6 +110,49 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 O aplicativo detecta a GPU sozinho e passa a usa-la. Sem GPU acessivel, ele cai para a CPU
 automaticamente e avisa na tela.
 
+### Disponivel na rede local (opcional)
+
+Por padrao o aplicativo escuta **so no proprio computador**. Quem abre a tela consegue ler
+transcricoes, baixar relatorios e gastar a sua chave do Gemini — por isso abrir para a rede
+**exige um token**.
+
+1. Crie um arquivo `.env` na raiz do projeto (ele nao vai para o git):
+
+   ```
+   PAPAGAIO_TOKEN=<um segredo longo e aleatorio>
+   PAPAGAIO_ALLOWED_ORIGINS=<ip-desta-maquina-na-rede>
+   ```
+
+   `PAPAGAIO_ALLOWED_ORIGINS` nao e detalhe: sem o IP desta maquina na lista, o navegador
+   ate carrega a tela, mas todo envio volta 403 pela protecao contra CSRF.
+
+2. Suba somando o arquivo de rede:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
+                  -f docker-compose.rede.yml up -d
+   ```
+
+3. De outro aparelho, abra `http://<ip-desta-maquina>:8000/?token=<seu-token>`. O token vira
+   cookie na primeira visita; depois basta o endereco.
+
+No Windows ainda e preciso liberar a porta no firewall. Uma regra restrita ao perfil
+*Private* e a sub-rede local:
+
+```powershell
+New-NetFirewallRule -DisplayName "Papagaio Transcritor (rede local)" -Direction Inbound `
+  -Action Allow -Protocol TCP -LocalPort 8000 -Profile Private -RemoteAddress LocalSubnet
+```
+
+Restringir ao perfil *Private* importa: ao conectar numa rede publica o Windows troca o
+perfil e a porta deixa de ficar exposta sozinha.
+
+O `iniciar.bat` reconhece o `.env` e mantem o acesso pela rede ao religar. Para fechar,
+apague o `.env` e rode `iniciar.bat` de novo.
+
+> Isto e para uma rede domestica de confianca. O trafego e HTTP puro: **nao exponha na
+> internet** nem em rede compartilhada com desconhecidos sem por um proxy com HTTPS na frente.
+
 ---
 
 ## Escolhendo o modo

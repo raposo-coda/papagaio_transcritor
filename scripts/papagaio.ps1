@@ -37,6 +37,46 @@ $env:WSL_UTF8 = 1
 $Raiz = Split-Path -Parent $PSScriptRoot
 $Endereco = "http://localhost:8000"
 
+# ---------------------------------------------------------------- rede local
+
+function Ler-Env {
+    <# Le o .env da raiz (nao versionado). Vazio quando nao existe. #>
+    $caminho = Join-Path $Raiz ".env"
+    $valores = @{}
+    if (-not (Test-Path $caminho)) { return $valores }
+    foreach ($linha in Get-Content $caminho) {
+        $t = $linha.Trim()
+        if (-not $t -or $t.StartsWith("#")) { continue }
+        $i = $t.IndexOf("=")
+        if ($i -gt 0) { $valores[$t.Substring(0, $i).Trim()] = $t.Substring($i + 1).Trim() }
+    }
+    return $valores
+}
+
+$EnvLocal = Ler-Env
+$Token = $EnvLocal["PAPAGAIO_TOKEN"]
+
+# Ter token configurado E o arquivo de rede presente e o sinal de que esta
+# maquina foi deliberadamente aberta para a rede local. Sem esse sinal, tudo
+# continua so em 127.0.0.1.
+$ModoRede = [bool]$Token -and (Test-Path (Join-Path $Raiz "docker-compose.rede.yml"))
+
+function Endereco-Com-Token($base = $Endereco) {
+    # Com token ativo, abrir a URL nua devolveria 401. O token entra uma vez na
+    # query e o servidor o converte em cookie.
+    if ($Token) { return "$base/?token=$Token" }
+    return $base
+}
+
+function Ip-Local {
+    try {
+        $ip = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+            Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" -and $_.PrefixOrigin -eq "Dhcp" } |
+            Select-Object -First 1 -ExpandProperty IPAddress
+        return $ip
+    } catch { return $null }
+}
+
 # ---------------------------------------------------------------- saida
 
 function Titulo($texto) {
@@ -110,10 +150,15 @@ function Aguardar-Engine($docker, $segundos = 300) {
 }
 
 function Aguardar-Servidor($segundos = 180) {
+    # Com token configurado, /api/meta sem credencial responde 401 - o que ja
+    # prova que o servidor esta de pe. Por isso o token vai junto na consulta.
+    $alvo = "$Endereco/api/meta"
+    if ($Token) { $alvo += "?token=$Token" }
+
     $fim = (Get-Date).AddSeconds($segundos)
     while ((Get-Date) -lt $fim) {
         try {
-            $r = Invoke-WebRequest -Uri "$Endereco/api/meta" -UseBasicParsing -TimeoutSec 3
+            $r = Invoke-WebRequest -Uri $alvo -UseBasicParsing -TimeoutSec 3
             if ($r.StatusCode -eq 200) { return $true }
         } catch { }
         Start-Sleep -Seconds 3
@@ -176,10 +221,13 @@ function Detectar-Gpu {
 }
 
 function Arquivos-Compose($usarGpu) {
-    if ($usarGpu) {
-        return @("-f", "docker-compose.yml", "-f", "docker-compose.gpu.yml")
-    }
-    return @("-f", "docker-compose.yml")
+    # Nao usar $args aqui: e variavel automatica do PowerShell.
+    $lista = @("-f", "docker-compose.yml")
+    if ($usarGpu) { $lista += @("-f", "docker-compose.gpu.yml") }
+    # Sem isto, ligar pelo atalho devolveria o app para 127.0.0.1 e derrubaria o
+    # acesso pela rede que o usuario configurou de proposito.
+    if ($ModoRede) { $lista += @("-f", "docker-compose.rede.yml") }
+    return $lista
 }
 
 # ================================================================ acoes
@@ -234,8 +282,22 @@ function Acao-Iniciar {
     } finally { Pop-Location }
 
     if (Aguardar-Servidor 120) { Ok "No ar em $Endereco" } else { Aviso "Subiu, mas demorou a responder." }
-    Start-Process $Endereco
+    Mostrar-Acesso
+    Start-Process (Endereco-Com-Token)
     Encerrar 0
+}
+
+function Mostrar-Acesso {
+    if (-not $ModoRede) { return }
+    $ip = Ip-Local
+    Write-Host ""
+    Write-Host "  Disponivel na rede local, com token." -ForegroundColor Cyan
+    if ($ip) {
+        Write-Host "  De outro aparelho, abra:" -ForegroundColor Gray
+        Write-Host "    http://${ip}:8000/?token=$Token" -ForegroundColor White
+        Write-Host "  O token vira cookie na primeira visita; depois basta http://${ip}:8000" -ForegroundColor DarkGray
+    }
+    Write-Host "  Para fechar o acesso pela rede, apague o .env e rode 'iniciar.bat'." -ForegroundColor DarkGray
 }
 
 function Acao-Setup {
@@ -365,7 +427,8 @@ function Acao-Setup {
     Write-Host "    Ligar de novo depois: duplo clique em 'iniciar.bat'" -ForegroundColor DarkGray
     Write-Host "    Desligar:             duplo clique em 'parar.bat'" -ForegroundColor DarkGray
 
-    Start-Process $Endereco
+    Mostrar-Acesso
+    Start-Process (Endereco-Com-Token)
     Encerrar 0
 }
 

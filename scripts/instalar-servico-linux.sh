@@ -238,6 +238,8 @@ install -m 0644 "$REPO/deploy/papagaio-deploy.service" /etc/systemd/system/
 install -m 0644 "$REPO/deploy/papagaio-deploy.timer"   /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable papagaio.service papagaio-deploy.timer
+# enable so registra para o proximo boot; o timer precisa ser iniciado agora.
+systemctl start papagaio-deploy.timer
 verde "unidades instaladas e habilitadas"
 
 passo "Subindo pela primeira vez (build + modelos: pode levar 10-20 minutos)"

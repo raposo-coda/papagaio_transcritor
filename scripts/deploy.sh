@@ -70,10 +70,13 @@ modo_desejado() {
 
 # Monta a lista de -f do Compose. Mesma ideia do Arquivos-Compose do
 # scripts/papagaio.ps1, que faz o equivalente no Windows.
+#
+# Caminhos absolutos de proposito: o Compose resolve -f relativo ao diretorio
+# ATUAL, nao ao --project-directory, e sob systemd o diretorio atual e /.
 arquivos_compose() {
-    local modo="$1"
-    printf '%s\n' -f docker-compose.yml -f docker-compose.rede.yml -f docker-compose.deploy.yml
-    [ "$modo" = "gpu" ] && printf '%s\n' -f docker-compose.gpu.yml
+    local modo="$1" r="$PAPAGAIO_REPO"
+    printf '%s\n' -f "$r/docker-compose.yml" -f "$r/docker-compose.rede.yml" -f "$r/docker-compose.deploy.yml"
+    [ "$modo" = "gpu" ] && printf '%s\n' -f "$r/docker-compose.gpu.yml"
     return 0
 }
 

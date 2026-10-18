@@ -23,10 +23,28 @@ _UPLOAD_TIMEOUT_SECONDS = 600
 _RETRY_ATTEMPTS = 4
 _RETRY_BASE_DELAY_SECONDS = 5
 
+# Tempo maximo esperando UMA resposta do Gemini. Sem limite, uma conexao que o
+# Google deixa pendurada (aberta, mas sem resposta) prende o job para sempre - e,
+# com ele, o lock que impede qualquer outra transcricao. Ja aconteceu: 1h15 de
+# audio ficou mais de uma hora parada. A transcricao normal de horas de audio
+# volta em poucos minutos, entao 20 min sobra com folga.
+_REQUEST_TIMEOUT_SECONDS = 20 * 60
+
+# Estourar o tempo limite custa caro (20 min cada vez): so uma segunda chance.
+_TIMEOUT_ATTEMPTS = 2
+
+
+def _timeout_options():
+    from google.genai import types
+
+    return types.HttpOptions(timeout=_REQUEST_TIMEOUT_SECONDS * 1000)  # em milissegundos
+
 
 def _call_with_retry(fn, label: str):
+    import httpx
     from google.genai import errors
 
+    timeouts = 0
     for attempt in range(1, _RETRY_ATTEMPTS + 1):
         try:
             return fn()
@@ -36,6 +54,15 @@ def _call_with_retry(fn, label: str):
             delay = _RETRY_BASE_DELAY_SECONDS * attempt
             log.warning(f"  [gemini] {label} indisponivel (tentativa {attempt}/{_RETRY_ATTEMPTS}): {exc}. Tentando de novo em {delay}s.")
             time.sleep(delay)
+        except httpx.TimeoutException:
+            timeouts += 1
+            minutos = _REQUEST_TIMEOUT_SECONDS // 60
+            if timeouts >= _TIMEOUT_ATTEMPTS or attempt == _RETRY_ATTEMPTS:
+                raise RuntimeError(
+                    f"O Gemini nao respondeu em {minutos} min ({label.lower()}), {timeouts} vez(es) seguidas. "
+                    "Tente de novo mais tarde ou use o modo local."
+                ) from None
+            log.warning(f"  [gemini] {label}: sem resposta do Gemini em {minutos} min. Tentando de novo.")
 
 _MIME_TYPES = {
     ".mp4": "video/mp4",
@@ -163,6 +190,7 @@ def transcribe_path(file_path: Path, lang_code: str, config: GeminiConfig, mime_
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=_TRANSCRIPTION_SCHEMA,
+                http_options=_timeout_options(),
             ),
         ),
         label="Transcricao",
@@ -241,9 +269,15 @@ def generate_summary(transcripts: list[NormalizedTranscriptResult], context_prom
     log.info(f"  [gemini] Gerando resumo com modelo: {model} | ~{len(prompt.split())} palavras")
 
     try:
+        from google.genai import types
+
         client = _client(config)
         response = _call_with_retry(
-            lambda: client.models.generate_content(model=model, contents=prompt),
+            lambda: client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(http_options=_timeout_options()),
+            ),
             label="Resumo",
         )
         text = (response.text or "").strip()

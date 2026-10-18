@@ -1,0 +1,368 @@
+/* ============================================================
+   Editor - audio ao lado do texto
+
+   Reaproveita style.css (cores, header, cartoes, botoes). Aqui so o que e
+   proprio do editor: a lista de trechos rola por dentro, a pagina nao.
+   ============================================================ */
+
+.voltar {
+  display: flex;
+}
+
+.ed-escolha {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ed-escolha .entrada {
+  padding: 6px 8px;
+  font-size: 13px;
+  max-width: 260px;
+}
+
+.ed-salvar {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ed-salvar .btn-cheio {
+  padding: 10px 16px;
+}
+
+.ed-salvar .btn-cheio:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.salvo-status {
+  font-size: 11px;
+  color: var(--cor-local);
+  white-space: nowrap;
+}
+
+.salvo-status.sujo {
+  color: var(--warning);
+}
+
+.ed-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.ed-link[hidden] {
+  display: none;
+}
+
+/* ---------- colunas ---------- */
+
+.ed-coluna-esq {
+  width: 380px;
+  flex-shrink: 0;
+}
+
+.ed-coluna-texto {
+  flex: 1;
+  min-width: 0;
+}
+
+#player {
+  width: 100%;
+}
+
+.ed-aviso {
+  font-size: 12px;
+  color: var(--warning);
+  border: 1px dashed var(--warning);
+  padding: 8px 10px;
+}
+
+.ed-velocidades {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.btn-mini.ativo {
+  border-color: var(--cor-acao);
+  color: var(--cor-acao);
+}
+
+.ed-opcoes {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ed-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 12px;
+}
+
+.ed-atalhos {
+  white-space: normal;
+  line-height: 1.6;
+}
+
+/* ---------- falantes ---------- */
+
+.ed-falantes-cartao {
+  overflow: hidden;
+}
+
+.ed-falantes {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.falante {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.falante-topo {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.falante-tocar {
+  flex-shrink: 0;
+}
+
+.falante-nome {
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
+.falante-info {
+  font-size: 11px;
+  color: var(--subtext);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.falante-reconhecido {
+  color: var(--cor-local);
+}
+
+.falante-acoes {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.falante-juntar,
+.trecho-falante {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--subtext);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 2px;
+}
+
+.ed-vozes {
+  flex-shrink: 0;
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+}
+
+.ed-vozes summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--subtext);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ed-vozes-nota {
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.ed-vozes-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.voz {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+/* ---------- trechos ---------- */
+
+.ed-trechos {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 6px;
+}
+
+.ed-vazio {
+  color: var(--muted);
+  padding: 20px 0;
+}
+
+.trecho {
+  padding: 8px 10px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  outline: none;
+}
+
+.trecho:hover {
+  background: var(--bg-raised);
+}
+
+.trecho:focus-visible {
+  border-left-color: var(--border-bright);
+}
+
+.trecho.ativo {
+  background: var(--bg-raised);
+  border-left-color: var(--cor-acao);
+}
+
+.trecho.editando {
+  border-left-color: var(--warning);
+  cursor: default;
+}
+
+.trecho-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.trecho-tempo {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--accent-dim);
+}
+
+.trecho-tempo:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.trecho-aprox {
+  color: var(--warning);
+  font-size: 12px;
+  cursor: help;
+}
+
+.trecho-editar {
+  margin-left: auto;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.trecho:hover .trecho-editar,
+.trecho:focus-within .trecho-editar {
+  opacity: 1;
+}
+
+.trecho-texto {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.trecho-texto.vazio {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.palavra {
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.palavra:hover {
+  background: rgba(57, 242, 216, 0.12);
+}
+
+.palavra.falando {
+  background: var(--accent);
+  color: #05100e;
+}
+
+.trecho-area {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.65;
+  resize: none;
+  overflow: hidden;
+}
+
+/* ---------- telas estreitas: empilha em vez de espremer ---------- */
+
+@media (max-width: 900px) {
+  html,
+  body {
+    overflow: auto;
+    height: auto;
+  }
+
+  header {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    gap: 10px;
+  }
+
+  main {
+    flex-direction: column;
+    padding: 12px 16px;
+  }
+
+  .ed-coluna-esq {
+    width: 100%;
+  }
+
+  .ed-trechos {
+    max-height: 70vh;
+  }
+}

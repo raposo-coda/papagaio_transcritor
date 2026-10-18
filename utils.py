@@ -6,17 +6,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import unicodedata
 from pathlib import Path
 
 try:
     from .config import CACHE_FILE
     from .logger import log
-    from .models import NormalizedTranscriptResult, TranscriptUtterance
+    from .models import NormalizedTranscriptResult, TranscriptUtterance, TranscriptWord
 except ImportError:
     from config import CACHE_FILE  # type: ignore
     from logger import log  # type: ignore
-    from models import NormalizedTranscriptResult, TranscriptUtterance  # type: ignore
+    from models import NormalizedTranscriptResult, TranscriptUtterance, TranscriptWord  # type: ignore
 
 
 def fmt_time(seconds: float) -> str:
@@ -135,6 +136,8 @@ def transcript_to_cache(transcript: NormalizedTranscriptResult) -> dict:
                 "start_ms": item.start_ms,
                 "end_ms": item.end_ms,
                 "text": item.text,
+                # Lista de [texto, inicio_ms, fim_ms]: compacto, porque sao milhares.
+                "words": [[w.text, w.start_ms, w.end_ms] for w in item.words],
             }
             for item in transcript.utterances
         ],
@@ -142,6 +145,18 @@ def transcript_to_cache(transcript: NormalizedTranscriptResult) -> dict:
         # cache reexibe os avisos errados no relatorio.
         "raw_metadata": dict(transcript.raw_metadata or {}),
     }
+
+
+def _words_from_cache(bruto) -> list[TranscriptWord]:
+    palavras = []
+    for entrada in bruto or []:
+        try:
+            texto, inicio, fim = entrada
+            palavras.append(TranscriptWord(text=str(texto), start_ms=int(inicio), end_ms=int(fim)))
+        except (TypeError, ValueError):
+            # Uma entrada torta perde so o tempo por palavra; o trecho continua valendo.
+            return []
+    return palavras
 
 
 def transcript_from_cache(data: dict, source_path: Path) -> NormalizedTranscriptResult:
@@ -159,8 +174,54 @@ def transcript_from_cache(data: dict, source_path: Path) -> NormalizedTranscript
                 start_ms=int(item.get("start_ms") or 0),
                 end_ms=int(item.get("end_ms") or 0),
                 text=item.get("text", ""),
+                words=_words_from_cache(item.get("words")),
             )
             for item in data.get("utterances") or []
         ],
         raw_metadata=dict(data.get("raw_metadata") or {}),
     )
+
+
+# ---------------------------------------------------------------------------
+# Registro do editor: <stem>.json + <stem>.webm ao lado do <stem>.md
+# ---------------------------------------------------------------------------
+
+EDITOR_AUDIO_EXT = ".webm"
+
+
+def write_json_atomic(path: Path, data: dict):
+    """Grava num temporario e troca de uma vez: um JSON pela metade nunca fica no lugar."""
+    parcial = path.with_name(path.name + ".parcial")
+    parcial.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(parcial, path)
+
+
+def editor_record_path(session_dir: Path, stem: str) -> Path:
+    return session_dir / f"{stem}.json"
+
+
+def editor_audio_path(session_dir: Path, stem: str) -> Path:
+    return session_dir / f"{stem}{EDITOR_AUDIO_EXT}"
+
+
+def save_editor_record(session_dir: Path, stem: str, transcript: NormalizedTranscriptResult):
+    """
+    Tudo o que o editor precisa de um arquivo: trechos, palavras com tempo e o
+    nome do arquivo de origem - o _cache.json nao serve para isso porque e
+    chaveado pelo conteudo do audio, sem nome.
+    """
+    registro = transcript_to_cache(transcript)
+    registro["source_name"] = transcript.source_path.name
+    registro["audio"] = editor_audio_path(session_dir, stem).name
+    write_json_atomic(editor_record_path(session_dir, stem), registro)
+
+
+def load_editor_record(session_dir: Path, stem: str) -> dict | None:
+    caminho = editor_record_path(session_dir, stem)
+    if not caminho.is_file():
+        return None
+    try:
+        data = json.loads(caminho.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) and "utterances" in data else None

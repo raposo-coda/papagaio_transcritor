@@ -511,10 +511,11 @@
     const diar = diarizationInfo();
     const separando = state.diarize && Boolean(diar && diar.available);
 
-    let transcricao = audioTotal / (dados.speed_factor || 1);
+    // Tempo por palavra fica sempre ligado no modo local (editor), com ou sem falantes.
+    const transcricao =
+      (audioTotal / (dados.speed_factor || 1)) * ((diar && diar.word_timestamps_overhead) || 1.15);
     let preparo = audioTotal / 25;
     if (separando) {
-      transcricao *= (diar && diar.word_timestamps_overhead) || 1.15;
       preparo += audioTotal / ((diar && diar.speed_factor) || 5.5);
     }
     const estimado = transcricao + preparo + 3 * state.entries.length;
@@ -659,12 +660,26 @@
       return;
     }
 
+    // A pasta da sessao identifica a transcricao no editor; o caminho pode vir com
+    // barra de Windows, entao corta pelas duas.
+    const sessao = job.session_dir ? job.session_dir.split(/[\\/]/).filter(Boolean).pop() : "";
+
     job.files.forEach((nome) => {
       const chip = document.createElement("a");
       chip.href = `/api/jobs/${state.jobId}/download/${encodeURIComponent(nome)}`;
       chip.textContent = nome;
       chip.setAttribute("download", nome);
       caixa.appendChild(chip);
+
+      if (sessao && !nome.startsWith("_")) {
+        const editar = document.createElement("a");
+        const stem = nome.replace(/\.md$/i, "");
+        editar.href = `/editor?sessao=${encodeURIComponent(sessao)}&arquivo=${encodeURIComponent(stem)}`;
+        editar.textContent = "\u270e editar";
+        editar.className = "chip-editar";
+        editar.title = `Ouvir e corrigir ${nome}`;
+        caixa.appendChild(editar);
+      }
     });
 
     if (job.files.length > 1) {

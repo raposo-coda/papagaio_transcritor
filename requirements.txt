@@ -7,6 +7,9 @@
 # e troque a linha do Dockerfile por:
 #   pip install --no-cache-dir --require-hashes -r requirements.lock
 fastapi>=0.110,<1.0
+# O <audio> do editor pula pelo arquivo com Range; o FileResponse so responde 206
+# a partir do Starlette 0.39.
+starlette>=0.39,<1.0
 uvicorn[standard]>=0.29,<1.0
 python-multipart>=0.0.9,<1.0
 pydantic>=2.6,<3.0

@@ -35,8 +35,8 @@ _SPEED_CPU_8_CORES = {"tiny": 12.0, "base": 8.0, "small": 3.5, "medium": 1.2, "l
 # visiveis no container) = 5,6x tempo real. O chute inicial era 15x, quase o triplo.
 DIARIZATION_SPEED = 5.5
 
-# Os timestamps por palavra, necessarios para casar fala com falante, encarecem a
-# transcricao em torno de 15%.
+# Os timestamps por palavra encarecem a transcricao em torno de 15%. Estao sempre
+# ligados no modo local: casam fala com falante e deixam o editor pular para cada palavra.
 WORD_TIMESTAMPS_OVERHEAD = 1.15
 
 
@@ -221,9 +221,9 @@ def estimate_seconds(
         return 0.0
     fator = speed_factor(model_size, device, cores, legacy_gpu=legacy_gpu)
     transcricao = audio_seconds / fator
+    transcricao *= WORD_TIMESTAMPS_OVERHEAD
     conversao = audio_seconds / 25.0  # ffmpeg costuma ser bem mais rapido que tempo real
     if diarize:
-        transcricao *= WORD_TIMESTAMPS_OVERHEAD
         conversao += audio_seconds / DIARIZATION_SPEED
     return transcricao + conversao + 3.0
 

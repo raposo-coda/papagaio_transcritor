@@ -11,32 +11,36 @@ from pathlib import Path
 try:
     from . import local_client
     from .config import MODE_LOCAL
-    from .converter import check_ffmpeg, convert_to_mp4, convert_to_wav16k
+    from .converter import check_ffmpeg, convert_to_mp4, convert_to_opus, convert_to_wav16k
     from .gemini_client import generate_summary, transcribe_path, validate_environment
     from .logger import log
     from .models import NormalizedTranscriptResult, PipelineRequest
     from .utils import (
         build_cache_key,
+        editor_audio_path,
         fmt_time,
         get_session_dir,
         load_cache,
         save_cache,
+        save_editor_record,
         transcript_from_cache,
         transcript_to_cache,
     )
 except ImportError:
     import local_client  # type: ignore
     from config import MODE_LOCAL  # type: ignore
-    from converter import check_ffmpeg, convert_to_mp4, convert_to_wav16k  # type: ignore
+    from converter import check_ffmpeg, convert_to_mp4, convert_to_opus, convert_to_wav16k  # type: ignore
     from gemini_client import generate_summary, transcribe_path, validate_environment  # type: ignore
     from logger import log  # type: ignore
     from models import NormalizedTranscriptResult, PipelineRequest  # type: ignore
     from utils import (  # type: ignore
         build_cache_key,
+        editor_audio_path,
         fmt_time,
         get_session_dir,
         load_cache,
         save_cache,
+        save_editor_record,
         transcript_from_cache,
         transcript_to_cache,
     )
@@ -283,6 +287,28 @@ def _process_file(
     return transcript
 
 
+def _salvar_para_editor(session_dir: Path, file_path: Path, transcript: NormalizedTranscriptResult):
+    """
+    Guarda o que o editor precisa: trechos com tempo e uma copia compacta do audio.
+
+    Nada disso e essencial para o relatorio, entao uma falha aqui vira aviso - o
+    job termina e o editor abre so com o texto.
+    """
+    try:
+        save_editor_record(session_dir, file_path.stem, transcript)
+    except Exception as exc:
+        log.exception("  [editor] Nao foi possivel salvar os tempos para o editor", exc=exc)
+        return
+
+    # Sempre converte, mesmo que o .webm ja exista: titulo repetido reusa a pasta,
+    # e um arquivo de mesmo nome com outro conteudo deixaria audio e texto trocados.
+    # Para fala a conversao e rapida perto da transcricao.
+    try:
+        convert_to_opus(file_path, editor_audio_path(session_dir, file_path.stem))
+    except Exception as exc:
+        log.warning(f"  [editor] Audio nao guardado ({exc}). O editor vai abrir so com o texto.")
+
+
 def run_pipeline(request: PipelineRequest, on_done, on_error):
     try:
         log.start_session(request.title or "sessao")
@@ -327,6 +353,7 @@ def run_pipeline(request: PipelineRequest, on_done, on_error):
                 md_path = session_dir / f"{file_path.stem}.md"
                 md_path.write_text(build_file_markdown(transcript), encoding="utf-8")
                 log.ok(f"  [salvo] {md_path.name}")
+                _salvar_para_editor(session_dir, file_path, transcript)
 
                 provider, modelo = _cache_identity(request)
                 cache_key = build_cache_key(file_path, modelo, provider=provider)

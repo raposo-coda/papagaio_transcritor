@@ -14,18 +14,24 @@ from collections import Counter
 from pathlib import Path
 
 try:
-    from . import diarizer
+    from . import diarizer, vozes
     from .config import get_models_dir
     from .hardware import WHISPER_MODELS
     from .logger import log
-    from .models import LocalConfig, NormalizedTranscriptResult, TranscriptUtterance
+    from .models import LocalConfig, NormalizedTranscriptResult, TranscriptUtterance, TranscriptWord
     from .utils import fmt_time
 except ImportError:
     import diarizer  # type: ignore
+    import vozes  # type: ignore
     from config import get_models_dir  # type: ignore
     from hardware import WHISPER_MODELS  # type: ignore
     from logger import log  # type: ignore
-    from models import LocalConfig, NormalizedTranscriptResult, TranscriptUtterance  # type: ignore
+    from models import (  # type: ignore
+        LocalConfig,
+        NormalizedTranscriptResult,
+        TranscriptUtterance,
+        TranscriptWord,
+    )
     from utils import fmt_time  # type: ignore
 
 PROVIDER_ID = "whisper-local"
@@ -133,34 +139,43 @@ def _executar_diarizacao(file_path: Path, config: LocalConfig) -> list:
         return []
 
 
+def _palavra(texto: str, inicio: float, fim: float) -> TranscriptWord:
+    return TranscriptWord(text=texto.strip(), start_ms=int(inicio * 1000), end_ms=int(fim * 1000))
+
+
 def _montar_unidades(segmentos, turnos: list, duracao_total: float) -> list[list]:
     """
-    Consome os segmentos do Whisper e devolve blocos [falante, inicio, fim, [textos]],
+    Consome os segmentos do Whisper e devolve blocos [falante, inicio, fim, [textos], [palavras]],
     quebrando o bloco toda vez que a voz muda.
 
     Com timestamps por palavra, uma frase que troca de voz no meio e partida no
-    ponto certo, em vez de ir inteira para o falante errado.
+    ponto certo, em vez de ir inteira para o falante errado. As palavras tambem
+    seguem com o proprio tempo, para o editor poder pular direto para cada uma.
     """
     unidades: list[list] = []
     proximo_aviso = 10.0
 
-    def acrescentar(falante, inicio: float, fim: float, texto: str, juntar: bool = True):
+    def acrescentar(falante, inicio: float, fim: float, texto: str, palavras: list, juntar: bool = True):
         if juntar and unidades and unidades[-1][0] == falante:
             unidades[-1][2] = fim
             unidades[-1][3].append(texto)
+            unidades[-1][4].extend(palavras)
         else:
-            unidades.append([falante, inicio, fim, [texto]])
+            unidades.append([falante, inicio, fim, [texto], list(palavras)])
 
     for segmento in segmentos:
-        palavras = getattr(segmento, "words", None) if turnos else None
+        palavras = [p for p in (getattr(segmento, "words", None) or []) if (p.word or "").strip()]
 
-        if palavras:
+        if palavras and turnos:
             for palavra in palavras:
-                texto = palavra.word or ""
-                if not texto.strip():
-                    continue
                 falante = diarizer.speaker_for_interval(turnos, palavra.start, palavra.end)
-                acrescentar(falante, palavra.start, palavra.end, texto)
+                acrescentar(
+                    falante,
+                    palavra.start,
+                    palavra.end,
+                    palavra.word,
+                    [_palavra(palavra.word, palavra.start, palavra.end)],
+                )
         else:
             texto = (segmento.text or "").strip()
             if texto:
@@ -171,7 +186,14 @@ def _montar_unidades(segmentos, turnos: list, duracao_total: float) -> list[list
                 )
                 # Sem falantes para agrupar, cada segmento do Whisper vira uma linha
                 # propria - juntar tudo num paragrafo unico so atrapalha a leitura.
-                acrescentar(falante, segmento.start, segmento.end, " " + texto, juntar=bool(turnos))
+                acrescentar(
+                    falante,
+                    segmento.start,
+                    segmento.end,
+                    " " + texto,
+                    [_palavra(p.word, p.start, p.end) for p in palavras],
+                    juntar=bool(turnos),
+                )
 
         if duracao_total > 0:
             progresso = (segmento.end / duracao_total) * 100
@@ -184,17 +206,25 @@ def _montar_unidades(segmentos, turnos: list, duracao_total: float) -> list[list
     return unidades
 
 
-def _rotular(unidades: list[list]) -> list[TranscriptUtterance]:
-    """Converte indices de agrupamento em 'Falante 1', 'Falante 2'... por ordem de entrada."""
+def _rotular(unidades: list[list], nomes: dict[int, str] | None = None) -> list[TranscriptUtterance]:
+    """
+    Converte indices de agrupamento em nomes.
+
+    Uma voz reconhecida no banco de vozes vem com o nome da pessoa; as demais
+    viram 'Falante 1', 'Falante 2'... por ordem de entrada.
+    """
+    nomes = nomes or {}
     rotulos: dict[int, str] = {}
     utterances: list[TranscriptUtterance] = []
 
-    for falante, inicio, fim, partes in unidades:
+    for falante, inicio, fim, partes, palavras in unidades:
         texto = " ".join("".join(partes).split())
         if not texto:
             continue
         if falante is None:
             nome = "Falante"
+        elif falante in nomes:
+            nome = nomes[falante]
         else:
             if falante not in rotulos:
                 rotulos[falante] = f"Falante {len(rotulos) + 1}"
@@ -205,9 +235,26 @@ def _rotular(unidades: list[list]) -> list[TranscriptUtterance]:
                 start_ms=int(inicio * 1000),
                 end_ms=int(fim * 1000),
                 text=texto,
+                words=palavras,
             )
         )
     return utterances
+
+
+def _reconhecer_vozes(file_path: Path, turnos: list) -> dict[int, tuple[str, float]]:
+    """
+    Procura as vozes da diarizacao no banco de vozes salvas.
+
+    Como a diarizacao, nunca derruba a transcricao: sem reconhecimento o
+    resultado so volta a ter 'Falante 1', 'Falante 2'...
+    """
+    if not turnos or not vozes.tem_vozes():
+        return {}
+    try:
+        return vozes.reconhecer(file_path, turnos)
+    except Exception as exc:
+        log.exception("  [falantes] Nao foi possivel comparar com as vozes salvas", exc=exc)
+        return {}
 
 
 def transcribe_path(file_path: Path, lang_code: str, config: LocalConfig) -> NormalizedTranscriptResult:
@@ -215,6 +262,7 @@ def transcribe_path(file_path: Path, lang_code: str, config: LocalConfig) -> Nor
     # vozes existem no comeco do log, e libera a memoria do audio antes da parte
     # pesada comecar.
     turnos = _executar_diarizacao(file_path, config)
+    reconhecidas = _reconhecer_vozes(file_path, turnos)
 
     modelo = _load_model(config)
 
@@ -224,13 +272,14 @@ def transcribe_path(file_path: Path, lang_code: str, config: LocalConfig) -> Nor
         language=lang_code or None,
         vad_filter=True,
         beam_size=5,
-        # So paga o custo dos timestamps por palavra quando ha turnos para casar.
-        word_timestamps=bool(turnos),
+        # Sempre por palavra: alem de casar fala com falante, e o que deixa o
+        # editor pular direto para uma palavra (custa ~15% a mais, ver hardware.py).
+        word_timestamps=True,
     )
 
     duracao_total = float(getattr(info, "duration", 0) or 0)
     unidades = _montar_unidades(segmentos, turnos, duracao_total)
-    utterances = _rotular(unidades)
+    utterances = _rotular(unidades, {indice: nome for indice, (nome, _) in reconhecidas.items()})
 
     texto_completo = "\n".join(item.text for item in utterances if item.text)
     if not duracao_total:
@@ -259,6 +308,8 @@ def transcribe_path(file_path: Path, lang_code: str, config: LocalConfig) -> Nor
             "diarization_backend": diarizer.BACKEND_ID if turnos else "",
             "speakers": falantes if turnos else 0,
             "device": config.device,
+            # Nome -> semelhanca com a voz salva, para o editor mostrar o quanto confiar.
+            "vozes_reconhecidas": {nome: round(score, 3) for nome, score in reconhecidas.values()},
         },
     )
 

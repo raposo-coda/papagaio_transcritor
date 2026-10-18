@@ -27,6 +27,7 @@ Tudo roda pelo navegador, na sua propria maquina. Nao precisa saber programar.
 - [Modo nuvem: pegando sua chave do Gemini](#modo-nuvem-pegando-sua-chave-do-gemini)
 - [Usando o aplicativo](#usando-o-aplicativo)
 - [O que voce recebe](#o-que-voce-recebe)
+- [Editor: ouvir e corrigir](#editor-ouvir-e-corrigir)
 - [O metodo, passo a passo](#o-metodo-passo-a-passo)
 - [O que sai do seu computador](#o-que-sai-do-seu-computador)
 - [Ligar e desligar no dia a dia](#ligar-e-desligar-no-dia-a-dia)
@@ -224,9 +225,9 @@ informe: o resultado fica bem melhor do que deixar o aplicativo adivinhar.
 e gravacoes ruins (telefone, microfone distante).
 
 **Quanto custa:** a separacao roda sempre na CPU, independente da GPU, a cerca de 6x o tempo
-real — ou seja, ~10 min para 1 hora de audio. Ela tambem liga a marcacao por palavra no
-Whisper, que encarece a transcricao em torno de 15%. Desligar o interruptor devolve esse
-tempo. Numa GTX 1070, 1 hora de audio com `large-v3` e falantes separados leva cerca de
+real — ou seja, ~10 min para 1 hora de audio. Desligar o interruptor devolve esse tempo. (A
+marcacao por palavra no Whisper, que encarece a transcricao em ~15%, fica ligada sempre: e o
+que permite clicar numa palavra no editor.) Numa GTX 1070, 1 hora de audio com `large-v3` e falantes separados leva cerca de
 26 minutos no total.
 
 ### Os downloads unicos
@@ -319,6 +320,9 @@ Dentro dela:
   tempo, mais metadados (duracao, idioma, palavras, modo e modelo usados).
 - **`_consolidado.md`** — resumo analitico (modo nuvem) ou panorama estatistico (modo local),
   juntando todos os arquivos da sessao.
+- **`nome_do_arquivo.json`** e **`nome_do_arquivo.webm`** — o que o [editor](#editor-ouvir-e-corrigir)
+  usa: os trechos com o tempo de cada palavra e uma copia compacta do audio (Opus mono,
+  ~15 MB por hora). Apagar os dois nao afeta o `.md`; so tira o arquivo do editor.
 - **`_cache.json`** — arquivo interno de cache. Pode ignorar.
 
 Arquivos `.md` (Markdown) sao texto simples: abrem no Bloco de Notas, no Word, no VS Code,
@@ -330,6 +334,38 @@ ele guarda a transcricao verbatim e fica so em disco.
 
 No Docker, como a pasta `output/` e compartilhada, os relatorios aparecem direto na pasta do
 projeto no seu computador — mesmo sem baixar pelo navegador.
+
+---
+
+## Editor: ouvir e corrigir
+
+O botao **&#9998;** no topo (ou o link *editar* ao lado de cada relatorio pronto) abre o
+editor em `/editor`: o audio de um lado, a transcricao do outro.
+
+- **Clique numa palavra** e o audio vai direto para ela. Clique no horario de um trecho para
+  ir ao comeco dele. Enquanto toca, a palavra falada fica destacada e a lista acompanha
+  (desligue em *seguir o audio*; rolar a lista a mao tambem suspende por alguns segundos).
+- **Duplo clique** (ou `Enter`) num trecho abre a edicao. `Ctrl+Enter` confirma, `Esc` cancela,
+  `Tab` confirma e ja abre o proximo. Corrigir uma palavra nao estraga o clique nas outras: as
+  que nao mudaram mantem o tempo, e as novas ganham um tempo estimado entre as vizinhas.
+- Atalhos: `Ctrl+Espaco` toca/pausa, `Alt+setas` volta/avanca 5 s, `Ctrl+S` salva. Ha tambem
+  salvamento automatico alguns segundos depois de cada mudanca.
+- Salvar regrava o `.md` daquele arquivo. O `_consolidado.md` da sessao nao e refeito.
+
+**Falantes.** O painel da esquerda lista cada voz com um botao **&#9654; amostra** (toca um
+trecho dela; clique de novo para ouvir outro). De o nome real e ele vale para todos os trechos.
+*Juntar com...* corrige quando a separacao partiu a mesma pessoa em dois rotulos, e o seletor
+em cada trecho corrige um trecho atribuido a voz errada.
+
+**Salvar esta voz.** Depois de dar nome a um falante, *salvar esta voz* guarda um vetor
+numerico daquela voz (nao o audio). Nas proximas transcricoes **locais com separacao de
+falantes**, quem for reconhecido ja vem com o nome, e o editor mostra o grau de semelhanca para
+voce conferir. Salvar a mesma pessoa em gravacoes diferentes melhora o reconhecimento. As vozes
+ficam na pasta de dados do app e podem ser apagadas em *Vozes salvas*.
+
+Limites: o editor so abre transcricoes feitas a partir desta versao (as antigas nao guardaram o
+audio nem o tempo das palavras). No modo nuvem o Gemini nao da tempo por palavra; o clique numa
+palavra cai num ponto estimado dentro do trecho (marcado com `~`).
 
 ---
 
@@ -398,10 +434,13 @@ painel lateral do aplicativo, e o codigo que o gera esta em `server.py`, no endp
 - O audio e o video sao lidos do disco e processados aqui mesmo.
 - A transcricao e feita pelo Whisper rodando localmente.
 - A separacao de falantes tambem roda localmente. O que ela compara sao caracteristicas da
-  voz, calculadas nesta maquina e descartadas ao fim do processamento — nada e guardado nem
-  reconhecido entre arquivos diferentes.
+  voz, calculadas nesta maquina e descartadas ao fim do processamento — a nao ser que voce
+  peca **salvar esta voz** no editor. Ai so um vetor numerico daquela voz (nao o audio) fica
+  guardado, na pasta de dados do app, para reconhecer a pessoa nas proximas transcricoes. Da
+  para apagar pelo editor.
 - O panorama consolidado e calculado a partir do proprio texto, sem IA e sem rede.
-- Relatorios, cache, configuracao e logs ficam so no seu computador.
+- Relatorios, cache, configuracao, logs e a copia compactada do audio usada pelo editor ficam
+  so no seu computador.
 
 *Unica excecao:* os modelos sao baixados na primeira vez que voce os usa — o de transcricao
 de `huggingface.co`, os de separacao de falantes das releases do sherpa-onnx em `github.com`.
@@ -418,8 +457,8 @@ modo local funciona offline.
 - O contexto que voce escreveu no passo 3 acompanha o pedido de resumo.
 - Sua chave de API identifica sua conta Google em cada chamada.
 
-Continuam so no seu computador: os relatorios `.md`, o cache, a chave de API (guardada em
-disco) e os logs. Vale a politica de dados da API do Google para o que e enviado.
+Continuam so no seu computador: os relatorios `.md`, o cache, a copia compactada do audio
+usada pelo editor, as vozes salvas, a chave de API (guardada em disco) e os logs. Vale a politica de dados da API do Google para o que e enviado.
 
 ---
 
@@ -542,21 +581,22 @@ As demais variaveis e o modelo de ameaca completo estao em [SECURITY.md](SECURIT
 ### Estrutura
 
 ```
-server.py         API FastAPI: config, hardware, auditoria, jobs, download, estaticos
+server.py         API FastAPI: config, hardware, auditoria, jobs, download, editor, vozes, estaticos
 pipeline.py       orquestra preparacao -> transcricao -> relatorio -> consolidado
 gemini_client.py  modo nuvem: upload, transcricao e resumo via Google Gemini
 local_client.py   modo local: transcricao offline via faster-whisper, atribuicao de falantes
                   e panorama estatistico
 diarizer.py       modo local: separacao de falantes offline via sherpa-onnx
+vozes.py          banco de vozes salvas e reconhecimento de falantes (mesmo modelo CAM++)
 hardware.py       deteccao de GPU/CPU/RAM, escolha do modelo e estimativa de tempo
-converter.py      normalizacao com ffmpeg: mp4 (nuvem) ou WAV 16 kHz mono (local)
+converter.py      normalizacao com ffmpeg: mp4 (nuvem), WAV 16 kHz mono (local), Opus (editor)
 config.py         constantes, modos, formatos suportados, persistencia de config
 models.py         dataclasses do pipeline (inclui LocalConfig e o campo mode)
-utils.py          cache por arquivo, pastas de sessao, formatacao de tempo
+utils.py          cache por arquivo, pastas de sessao, registro do editor, formatacao de tempo
 logger.py         log com callback para a interface
 warmup.py         baixa os modelos do modo local (rodado pelo instalador)
 scripts/          papagaio.ps1: logica dos atalhos de 1 clique do Windows
-static/           interface web (HTML + CSS + JS puro, sem build)
+static/           interface web (HTML + CSS + JS puro, sem build); editor.* e o editor
 legacy/           versao antiga em tkinter, mantida para referencia
 ```
 
@@ -571,6 +611,15 @@ legacy/           versao antiga em tkinter, mantida para referencia
 | `POST` | `/api/jobs` | Cria um job (multipart com `files`, `lang`, `title`, `context_prompt`). |
 | `GET` | `/api/jobs/{id}` | Status, modo, log acumulado e arquivos gerados. |
 | `GET` | `/api/jobs/{id}/download/{arquivo}` | Baixa um relatorio da sessao. |
+| `GET` | `/editor` | Pagina do editor. |
+| `GET` | `/api/sessoes` | Sessoes da pasta de destino que abrem no editor, mais novas primeiro. |
+| `GET` | `/api/sessoes/{sessao}/{arquivo}` | Trechos, palavras com tempo, falantes e se ha audio. |
+| `PUT` | `/api/sessoes/{sessao}/{arquivo}` | Grava texto, falantes e tempo das palavras; regrava o `.md`. |
+| `GET` | `/api/sessoes/{sessao}/{arquivo}/audio` | Audio Opus do editor (aceita `Range`). |
+| `GET` | `/api/sessoes/{sessao}/{arquivo}/md` | Baixa o `.md` daquele arquivo. |
+| `GET` | `/api/vozes` | Nomes das vozes salvas e quantas amostras cada uma tem (nunca os vetores). |
+| `POST` | `/api/vozes` | Salva a voz de um falante a partir do audio guardado (`sessao`, `stem`, `falante`, `nome`). |
+| `DELETE` | `/api/vozes/{nome}` | Apaga uma voz salva. |
 
 ### Modelos
 

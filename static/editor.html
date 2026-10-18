@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Editor - Papagaio Transcritor</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/editor.css" />
+</head>
+<body>
+
+  <header>
+    <a href="/" class="voltar" title="Voltar para a transcricao">
+      <img id="app-logo" src="/static/logo.png" alt="" width="40" height="40" />
+    </a>
+    <div class="marca">
+      <div class="marca-nome">Editor</div>
+      <div class="marca-versao">ouvir, corrigir, nomear</div>
+    </div>
+
+    <div class="ed-escolha">
+      <label for="sel-sessao">Sessao</label>
+      <select id="sel-sessao" class="entrada"></select>
+    </div>
+    <div class="ed-escolha">
+      <label for="sel-arquivo">Arquivo</label>
+      <select id="sel-arquivo" class="entrada"></select>
+    </div>
+
+    <div class="ed-salvar">
+      <span id="salvo-status" class="salvo-status">--</span>
+      <button type="button" class="btn-cheio" id="btn-salvar" disabled>Salvar</button>
+    </div>
+    <a class="btn-quadrado ed-link" id="btn-md" title="Baixar o .md" href="#" download>&#8595;</a>
+    <a class="btn-quadrado ed-link" href="/" title="Voltar para a transcricao">&#8617;</a>
+  </header>
+
+  <main>
+    <!-- ---------- player e falantes ---------- -->
+    <section class="coluna ed-coluna-esq">
+      <div class="cartao">
+        <div class="cartao-titulo">Audio</div>
+        <audio id="player" controls preload="metadata"></audio>
+        <div id="sem-audio" class="ed-aviso" hidden>
+          O audio desta transcricao nao foi guardado. Da para editar o texto, mas nao ouvir.
+        </div>
+        <div class="ed-controles">
+          <div class="ed-velocidades" id="velocidades" role="group" aria-label="Velocidade">
+            <button type="button" class="btn-mini" data-v="0.75">0.75x</button>
+            <button type="button" class="btn-mini ativo" data-v="1">1x</button>
+            <button type="button" class="btn-mini" data-v="1.25">1.25x</button>
+            <button type="button" class="btn-mini" data-v="1.5">1.5x</button>
+            <button type="button" class="btn-mini" data-v="2">2x</button>
+          </div>
+        </div>
+        <div class="ed-opcoes">
+          <label class="ed-check"><input type="checkbox" id="opt-seguir" checked /> seguir o audio</label>
+          <label class="ed-check"><input type="checkbox" id="opt-pausar" /> pausar ao editar</label>
+        </div>
+        <div class="campo-nota ed-atalhos">
+          Ctrl+Espaco tocar/pausar &middot; Alt+&larr;/&rarr; 5s &middot; Ctrl+S salvar<br />
+          Clique numa palavra para ir ate ela &middot; duplo clique para editar
+        </div>
+      </div>
+
+      <div class="cartao cartao-cresce ed-falantes-cartao">
+        <div class="cartao-titulo com-acao">
+          <span>Falantes</span>
+          <span class="campo-nota" id="falantes-nota"></span>
+        </div>
+        <div id="falantes" class="ed-falantes"></div>
+
+        <details class="ed-vozes">
+          <summary>Vozes salvas <span id="vozes-qtd" class="titulo-nota"></span></summary>
+          <p class="campo-nota ed-vozes-nota">
+            Uma voz salva e um vetor numerico calculado nesta maquina (nao o audio). Nas proximas
+            transcricoes locais com separacao de falantes, quem for reconhecido ja vem com o nome.
+          </p>
+          <div id="vozes" class="ed-vozes-lista"></div>
+        </details>
+      </div>
+    </section>
+
+    <!-- ---------- texto ---------- -->
+    <section class="coluna ed-coluna-texto">
+      <div class="cartao cartao-cresce">
+        <div class="cartao-titulo com-acao">
+          <span id="texto-titulo">Transcricao</span>
+          <span class="campo-nota" id="texto-nota"></span>
+        </div>
+        <div id="trechos" class="ed-trechos" tabindex="-1">
+          <div class="ed-vazio">Escolha uma sessao no topo.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span class="status" id="status">Pronto.</span>
+  </footer>
+
+  <script src="/static/editor.js"></script>
+</body>
+</html>

@@ -9,11 +9,23 @@ from pathlib import Path
 
 
 @dataclass
+class TranscriptWord:
+    """Uma palavra com tempo proprio - e o que permite clicar nela no editor."""
+
+    text: str
+    start_ms: int
+    end_ms: int
+
+
+@dataclass
 class TranscriptUtterance:
     speaker: str
     start_ms: int
     end_ms: int
     text: str
+    # Vazio quando o provider nao da tempo por palavra (Gemini, cache antigo):
+    # o editor interpola dentro do trecho nesse caso.
+    words: list[TranscriptWord] = field(default_factory=list)
 
 
 @dataclass

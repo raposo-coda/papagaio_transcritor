@@ -280,6 +280,13 @@ header {
   transition: border-color 0.15s, color 0.15s;
 }
 
+a.btn-quadrado {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .btn-quadrado:hover {
   border-color: var(--border-bright);
   color: var(--accent);
@@ -847,6 +854,17 @@ textarea.entrada {
   border-color: var(--accent);
   background: var(--surface);
   color: var(--accent);
+}
+
+/* O link do editor nao e download: sem a seta, com a cor de "mexer aqui". */
+#results a.chip-editar {
+  border-style: dashed;
+  color: var(--subtext);
+  margin-left: -4px;
+}
+
+#results a.chip-editar::before {
+  content: none;
 }
 
 .results-vazio {

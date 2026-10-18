@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import shutil
+import tempfile
 import threading
 import time
 import uuid
@@ -18,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 try:
-    from . import diarizer, hardware, local_client, security
+    from . import diarizer, hardware, local_client, security, vozes
     from .config import (
         APP_DATA_DIR,
         APP_NAME,
@@ -50,15 +51,24 @@ try:
         save_config,
         validate_output_dir,
     )
+    from .converter import convert_to_wav16k
     from .gemini_client import validate_environment
     from .logger import log
     from .models import GeminiConfig, LocalConfig, PipelineRequest
-    from .pipeline import run_pipeline
+    from .pipeline import build_file_markdown, run_pipeline
+    from .utils import (
+        editor_audio_path,
+        editor_record_path,
+        load_editor_record,
+        transcript_from_cache,
+        write_json_atomic,
+    )
 except ImportError:
     import diarizer  # type: ignore
     import hardware  # type: ignore
     import local_client  # type: ignore
     import security  # type: ignore
+    import vozes  # type: ignore
     from config import (  # type: ignore
         APP_DATA_DIR,
         APP_NAME,
@@ -90,10 +100,18 @@ except ImportError:
         save_config,
         validate_output_dir,
     )
+    from converter import convert_to_wav16k  # type: ignore
     from gemini_client import validate_environment  # type: ignore
     from logger import log  # type: ignore
     from models import GeminiConfig, LocalConfig, PipelineRequest  # type: ignore
-    from pipeline import run_pipeline  # type: ignore
+    from pipeline import build_file_markdown, run_pipeline  # type: ignore
+    from utils import (  # type: ignore
+        editor_audio_path,
+        editor_record_path,
+        load_editor_record,
+        transcript_from_cache,
+        write_json_atomic,
+    )
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -116,6 +134,9 @@ app.middleware("http")(security.security_middleware)
 _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
 _run_lock = threading.Lock()
+# Serializa as gravacoes do editor: dois salvamentos simultaneos do mesmo arquivo
+# (autosave + Ctrl+S) nao podem intercalar a leitura e a escrita do JSON.
+_edicao_lock = threading.Lock()
 
 
 _hardware_cache: dict | None = None
@@ -374,6 +395,10 @@ def get_audit():
             "stays": [
                 f"Os relatorios .md finais, salvos em {pasta}.",
                 "O cache de transcricoes, na mesma pasta.",
+                "Uma copia compactada do audio (Opus) e os tempos de cada palavra, na pasta da "
+                "sessao, para o editor tocar o audio junto com o texto.",
+                "As vozes que voce salvar no editor (um vetor numerico por voz, nao o audio), "
+                "na pasta de dados do app. Da para apagar pelo editor.",
                 "Sua chave de API, guardada em disco nesta maquina, legivel so por voce.",
                 "Os logs de execucao.",
             ],
@@ -388,9 +413,14 @@ def get_audit():
                 "O audio e o video nunca saem da maquina: sao lidos do disco e processados na sua CPU/GPU.",
                 "A transcricao e feita pelo modelo Whisper rodando aqui dentro.",
                 "A separacao de falantes tambem roda aqui: o que e comparado sao caracteristicas "
-                "da voz, calculadas nesta maquina e descartadas ao fim do processamento.",
+                "da voz, calculadas nesta maquina e descartadas ao fim do processamento - a nao "
+                "ser que voce peca 'Salvar esta voz' no editor.",
+                "As vozes salvas (um vetor numerico por voz, nao o audio) ficam na pasta de dados "
+                "do app e servem para reconhecer a pessoa nas proximas transcricoes. Da para "
+                "apagar pelo editor.",
                 "O panorama consolidado e calculado a partir do proprio texto, sem IA e sem rede.",
-                f"Relatorios, cache e logs ficam so no seu computador, em {pasta}.",
+                f"Relatorios, cache, logs e a copia compactada do audio usada pelo editor ficam "
+                f"so no seu computador, em {pasta}.",
             ],
             "destinations": [],
             "one_time_download": (
@@ -591,6 +621,249 @@ def download_job_zip(job_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{nome_zip}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Editor: sessoes salvas em disco, audio e edicao dos trechos
+# ---------------------------------------------------------------------------
+
+
+def _nome_seguro(nome: str) -> str:
+    """Aceita so um nome simples, sem barra, sem '..' e sem arquivos internos (_cache)."""
+    if not nome or Path(nome).name != nome or nome.startswith((".", "_")):
+        raise HTTPException(404, "Nao encontrado.")
+    return nome
+
+
+def _pasta_sessao(sessao: str) -> Path:
+    base = get_output_dir().resolve()
+    pasta = (base / _nome_seguro(sessao)).resolve()
+    if pasta.parent != base or not pasta.is_dir():
+        raise HTTPException(404, "Sessao nao encontrada.")
+    return pasta
+
+
+def _registro(sessao: str, stem: str) -> tuple[Path, dict]:
+    pasta = _pasta_sessao(sessao)
+    registro = load_editor_record(pasta, _nome_seguro(stem))
+    if registro is None:
+        raise HTTPException(404, "Esta transcricao nao tem dados para o editor.")
+    return pasta, registro
+
+
+def _stems_editaveis(pasta: Path) -> list[Path]:
+    return sorted(p for p in pasta.glob("*.json") if p.is_file() and not p.name.startswith((".", "_")))
+
+
+@app.get("/editor")
+def editor_page():
+    return FileResponse(STATIC_DIR / "editor.html")
+
+
+@app.get("/api/sessoes")
+def list_sessoes():
+    """Sessoes da pasta de saida que podem ser abertas no editor, mais novas primeiro."""
+    base = get_output_dir()
+    sessoes = []
+    if base.is_dir():
+        for pasta in base.iterdir():
+            if not pasta.is_dir() or pasta.name.startswith((".", "_")):
+                continue
+            registros = _stems_editaveis(pasta)
+            if not registros:
+                continue
+            sessoes.append(
+                {
+                    "nome": pasta.name,
+                    "modificado": max(p.stat().st_mtime for p in registros),
+                    "arquivos": [
+                        {"stem": p.stem, "audio": editor_audio_path(pasta, p.stem).is_file()}
+                        for p in registros
+                    ],
+                }
+            )
+    sessoes.sort(key=lambda item: item["modificado"], reverse=True)
+    return {"output_dir": str(base), "sessoes": sessoes}
+
+
+@app.get("/api/sessoes/{sessao}/{stem}")
+def get_sessao_arquivo(sessao: str, stem: str):
+    pasta, registro = _registro(sessao, stem)
+    return {
+        "sessao": pasta.name,
+        "stem": stem,
+        "source_name": registro.get("source_name") or stem,
+        "provider_id": registro.get("provider_id", ""),
+        "model": registro.get("model", ""),
+        "duracao": registro.get("audio_duration_seconds") or 0,
+        "utterances": registro.get("utterances") or [],
+        "vozes_reconhecidas": (registro.get("raw_metadata") or {}).get("vozes_reconhecidas") or {},
+        "diarizacao": bool((registro.get("raw_metadata") or {}).get("diarization")),
+        "audio": editor_audio_path(pasta, stem).is_file(),
+        "md": (pasta / f"{stem}.md").is_file(),
+    }
+
+
+@app.get("/api/sessoes/{sessao}/{stem}/audio")
+def get_sessao_audio(sessao: str, stem: str):
+    # FileResponse responde Range com 206: e o que deixa o <audio> pular para
+    # qualquer ponto sem baixar o arquivo inteiro antes.
+    pasta = _pasta_sessao(sessao)
+    audio = editor_audio_path(pasta, _nome_seguro(stem))
+    if not audio.is_file():
+        raise HTTPException(404, "O audio desta transcricao nao foi guardado.")
+    return FileResponse(audio, media_type="audio/webm")
+
+
+@app.get("/api/sessoes/{sessao}/{stem}/md")
+def get_sessao_md(sessao: str, stem: str):
+    pasta = _pasta_sessao(sessao)
+    md = pasta / f"{_nome_seguro(stem)}.md"
+    if not md.is_file():
+        raise HTTPException(404, "Relatorio nao encontrado.")
+    return FileResponse(md, filename=md.name)
+
+
+MAX_TRECHOS = 50_000
+MAX_PALAVRAS_TRECHO = 20_000
+
+
+class TrechoEditado(BaseModel):
+    speaker: str = Field(max_length=vozes.MAX_NOME)
+    text: str = Field(max_length=200_000)
+    words: list[tuple[str, int, int]] = Field(default_factory=list, max_length=MAX_PALAVRAS_TRECHO)
+
+
+class EdicaoPayload(BaseModel):
+    utterances: list[TrechoEditado] = Field(max_length=MAX_TRECHOS)
+
+
+def _palavras_dentro(palavras: list[tuple[str, int, int]], inicio: int, fim: int) -> list[list]:
+    """
+    Prende cada palavra no intervalo do trecho e mantem a ordem no tempo.
+
+    O realinhamento roda no navegador; aqui so garantimos que nada que chegue
+    possa mandar o audio para fora do trecho ou andar para tras.
+    """
+    saida = []
+    piso = inicio
+    for texto, ini, fim_palavra in palavras:
+        texto = " ".join(str(texto).split())
+        if not texto:
+            continue
+        ini = min(max(int(ini), piso), fim)
+        fim_palavra = min(max(int(fim_palavra), ini), fim)
+        saida.append([texto, ini, fim_palavra])
+        piso = ini
+    return saida
+
+
+@app.put("/api/sessoes/{sessao}/{stem}")
+def save_sessao_arquivo(sessao: str, stem: str, payload: EdicaoPayload):
+    """
+    Grava as edicoes do editor: texto, falante e tempo das palavras de cada trecho.
+
+    O inicio e o fim de cada trecho sao sempre os do arquivo - o editor nao
+    divide nem junta trechos, entao a lista tem de vir com o mesmo tamanho.
+    """
+    with _edicao_lock:
+        pasta, registro = _registro(sessao, stem)
+        originais = registro.get("utterances") or []
+        if len(payload.utterances) != len(originais):
+            raise HTTPException(409, "A transcricao mudou no disco. Recarregue o editor.")
+
+        novos = []
+        for original, editado in zip(originais, payload.utterances, strict=True):
+            inicio = int(original.get("start_ms") or 0)
+            fim = int(original.get("end_ms") or 0)
+            falante = " ".join(editado.speaker.split()) or "Falante"
+            novos.append(
+                {
+                    "speaker": falante,
+                    "start_ms": inicio,
+                    "end_ms": fim,
+                    "text": " ".join(editado.text.split()),
+                    "words": _palavras_dentro(editado.words, inicio, fim),
+                }
+            )
+
+        registro["utterances"] = novos
+        registro["text"] = "\n".join(item["text"] for item in novos if item["text"])
+        registro.setdefault("raw_metadata", {})["editado"] = True
+        write_json_atomic(editor_record_path(pasta, stem), registro)
+
+        transcript = transcript_from_cache(registro, Path(registro.get("source_name") or f"{stem}.md"))
+        (pasta / f"{stem}.md").write_text(build_file_markdown(transcript), encoding="utf-8")
+
+    return {"ok": True, "salvo_em": time.time()}
+
+
+@app.get("/api/vozes")
+def list_vozes():
+    return {"vozes": vozes.listar(), "disponivel": diarizer.validate_environment() == []}
+
+
+class SalvarVozPayload(BaseModel):
+    sessao: str = Field(max_length=255)
+    stem: str = Field(max_length=255)
+    falante: str = Field(max_length=vozes.MAX_NOME)
+    nome: str = Field(max_length=vozes.MAX_NOME)
+
+
+@app.post("/api/vozes")
+def save_voz(payload: SalvarVozPayload):
+    """
+    Salva a voz de um falante a partir do audio guardado da sessao.
+
+    Usa o audio salvo, nao a diarizacao, entao funciona tambem para sessoes do
+    modo nuvem. O vetor e calculado aqui e so ele vai para o banco.
+    """
+    erros = diarizer.validate_environment()
+    if erros:
+        raise HTTPException(400, "\n".join(erros))
+    try:
+        nome = vozes.normalizar_nome(payload.nome)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
+
+    pasta, registro = _registro(payload.sessao, payload.stem)
+    audio = editor_audio_path(pasta, payload.stem)
+    if not audio.is_file():
+        raise HTTPException(400, "O audio desta transcricao nao foi guardado.")
+
+    intervalos = [
+        (int(item.get("start_ms") or 0) / 1000, int(item.get("end_ms") or 0) / 1000)
+        for item in registro.get("utterances") or []
+        if item.get("speaker") == payload.falante
+    ]
+    if not intervalos:
+        raise HTTPException(400, "Esse falante nao aparece no arquivo salvo. Salve as edicoes antes.")
+
+    # Calcular o vetor disputa CPU e modelo com uma transcricao: melhor recusar
+    # do que deixar as duas lentas.
+    if not _run_lock.acquire(blocking=False):
+        raise HTTPException(409, "Ha uma transcricao em andamento. Tente de novo quando ela terminar.")
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = convert_to_wav16k(audio, Path(tmp))
+            vetor = vozes.embedding_de_intervalos(wav, intervalos)
+    except Exception as exc:
+        log.exception("Falha ao salvar voz", exc=exc)
+        raise HTTPException(500, "Nao foi possivel calcular a voz. Veja o log.") from None
+    finally:
+        _run_lock.release()
+
+    if vetor is None:
+        raise HTTPException(400, "Pouca fala desse falante para salvar a voz (precisa de alguns segundos).")
+    amostras = vozes.adicionar(nome, vetor)
+    return {"ok": True, "nome": nome, "amostras": amostras}
+
+
+@app.delete("/api/vozes/{nome}")
+def delete_voz(nome: str):
+    if not vozes.apagar(nome):
+        raise HTTPException(404, "Voz nao encontrada.")
+    return {"ok": True}
 
 
 @app.get("/")

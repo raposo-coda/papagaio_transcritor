@@ -126,3 +126,40 @@ def convert_to_wav16k(source_path: Path, out_dir: Path) -> Path:
     mb_size = out_path.stat().st_size / 1_048_576
     log.ok(f"  [ffmpeg] Audio pronto: {out_path.name} ({mb_size:.1f} MB)")
     return out_path
+
+
+def convert_to_opus(source_path: Path, out_path: Path) -> Path:
+    """
+    Copia compacta do audio para o editor ouvir junto com o texto.
+
+    Opus mono a 32 kbps fica em ~15 MB por hora e soa bem para fala. O container
+    WebM toca direto no navegador (Chrome, Firefox, Safari 15+) e aceita pular para
+    qualquer ponto - o que o editor faz o tempo todo.
+    """
+    ffmpeg_command = get_ffmpeg_command()
+    if not ffmpeg_command:
+        raise RuntimeError("ffmpeg nao encontrado. Necessario para guardar o audio para o editor.")
+
+    # Escreve num temporario ao lado e so troca no fim: um .webm pela metade nunca
+    # fica parecendo pronto se o ffmpeg cair no meio.
+    parcial = out_path.with_name(out_path.stem + ".parcial.webm")
+    log.info(f"  [ffmpeg] Guardando audio para o editor: {out_path.name}")
+    command = [
+        ffmpeg_command, "-y", "-i", str(source_path),
+        "-vn", "-ac", "1", "-c:a", "libopus", "-b:a", "32k",
+        str(parcial),
+    ]
+
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        parcial.unlink(missing_ok=True)
+        log.error(f"  [ffmpeg] stderr:\n{result.stderr}")
+        raise RuntimeError(
+            f"ffmpeg nao conseguiu gerar o audio do editor para {source_path.name} "
+            f"(codigo {result.returncode}). O detalhe tecnico esta no log desta sessao."
+        )
+
+    parcial.replace(out_path)
+    mb_size = out_path.stat().st_size / 1_048_576
+    log.ok(f"  [ffmpeg] Audio do editor salvo: {out_path.name} ({mb_size:.1f} MB)")
+    return out_path

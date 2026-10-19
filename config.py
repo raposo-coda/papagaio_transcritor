@@ -201,6 +201,14 @@ DEFAULT_LOCAL_DIARIZE = True
 LOCAL_SPEAKERS_AUTO = 0  # deixa o numero de falantes ser descoberto por agrupamento
 MAX_SPEAKERS = 10
 
+# Fatiamento no modo nuvem. Uma reuniao longa pedida de uma vez so vira uma
+# resposta enorme, que demora, encosta no limite de saida do modelo e, quando
+# falha, joga fora tudo. Em fatias, cada pedido e curto, so a fatia que falhou
+# e repetida e as prontas ficam no cache: rodar de novo continua de onde parou.
+GEMINI_SLICE_SECONDS = 10 * 60  # tamanho alvo de cada fatia
+GEMINI_SLICE_THRESHOLD_SECONDS = 15 * 60  # abaixo disso o arquivo vai inteiro
+GEMINI_SLICE_SEARCH_SECONDS = 90  # procura um silencio ate essa distancia do corte alvo
+
 # Limites de entrada (aplicados em server.py).
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024  # limite do File API do Gemini por arquivo
 MAX_FILES_PER_JOB = 50

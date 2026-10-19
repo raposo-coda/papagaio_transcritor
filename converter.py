@@ -10,6 +10,8 @@ Dois destinos, conforme o modo:
 
 from __future__ import annotations
 
+import itertools
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -89,6 +91,109 @@ def convert_to_mp4(source_path: Path, out_dir: Path) -> tuple[Path, str]:
     mb_size = out_path.stat().st_size / 1_048_576
     log.ok(f"  [ffmpeg] Convertido: {out_path.name} ({mb_size:.1f} MB)")
     return out_path, mime_type
+
+
+def probe_duration(file_path: Path) -> float:
+    """Duracao em segundos pelo ffprobe; 0 quando nao der para medir."""
+    ffprobe_command = shutil.which("ffprobe")
+    if not ffprobe_command:
+        return 0.0
+    result = subprocess.run(
+        [
+            ffprobe_command, "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(file_path),
+        ],
+        capture_output=True, text=True, check=False,
+    )
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
+# Do mais rigoroso ao mais tolerante. Gravacao de reuniao costuma ter ruido de
+# fundo (ar-condicionado, sala) acima de -35 dB: numa de 75 min so -25 dB achou
+# pausas perto de todos os cortes.
+_SILENCE_THRESHOLDS_DB = (-35, -30, -25, -20)
+
+
+def _silences(file_path: Path, noise_db: int) -> list[tuple[float, float]]:
+    """Trechos de silencio (inicio, fim) achados pelo silencedetect do ffmpeg."""
+    ffmpeg_command = get_ffmpeg_command()
+    result = subprocess.run(
+        [
+            ffmpeg_command, "-hide_banner", "-nostats", "-i", str(file_path),
+            "-vn", "-af", f"silencedetect=noise={noise_db}dB:d=0.4", "-f", "null", "-",
+        ],
+        capture_output=True, text=True, check=False,
+    )
+    silencios = []
+    inicio = None
+    for linha in result.stderr.splitlines():
+        achou = re.search(r"silence_start: (-?[\d.]+)", linha)
+        if achou:
+            inicio = float(achou.group(1))
+            continue
+        achou = re.search(r"silence_end: ([\d.]+)", linha)
+        if achou and inicio is not None:
+            silencios.append((max(inicio, 0.0), float(achou.group(1))))
+            inicio = None
+    return silencios
+
+
+def plan_slices(file_path: Path, duration: float, target: float, search: float) -> list[tuple[float, float]]:
+    """
+    Divide o arquivo em fatias de ~target segundos, cortando no meio de silencios.
+
+    Cortar no silencio evita partir uma palavra entre duas fatias. Para cada
+    corte vale o limiar mais rigoroso que ache uma pausa na janela; sem pausa
+    nenhuma perto do alvo (musica, falas sobrepostas), o corte cai no proprio
+    alvo. O resultado depende so do conteudo, entao repetir o job gera as mesmas
+    fatias e o cache de cada uma volta a valer.
+    """
+    pausas_por_limiar = {}
+
+    def pausas(noise_db: int) -> list[float]:
+        if noise_db not in pausas_por_limiar:
+            pausas_por_limiar[noise_db] = [(ini + fim) / 2 for ini, fim in _silences(file_path, noise_db)]
+        return pausas_por_limiar[noise_db]
+
+    cortes = []
+    anterior = 0.0
+    # A ultima fatia fica com no maximo ~1,1x o alvo: quanto mais longa, mais o
+    # Gemini estica os tempos (uma de 12,6 min voltou com 20,6 min). Sobra curta
+    # no fim e inofensiva.
+    while duration - anterior > target * 1.1:
+        alvo = anterior + target
+        corte = alvo
+        for noise_db in _SILENCE_THRESHOLDS_DB:
+            perto = [p for p in pausas(noise_db) if abs(p - alvo) <= search]
+            if perto:
+                corte = min(perto, key=lambda p: abs(p - alvo))
+                break
+        cortes.append(round(corte, 2))
+        anterior = corte
+    return list(itertools.pairwise([0.0, *cortes, duration]))
+
+
+def extract_slice(source_path: Path, start: float, end: float, out_path: Path) -> Path:
+    """Copia o audio entre start e end para um .m4a, sem reencodar."""
+    ffmpeg_command = get_ffmpeg_command()
+    command = [
+        ffmpeg_command, "-y", "-ss", f"{start:.3f}", "-i", str(source_path),
+        "-t", f"{end - start:.3f}", "-vn", "-c:a", "copy",
+        str(out_path),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        log.error(f"  [ffmpeg] stderr:\n{result.stderr}")
+        raise RuntimeError(
+            f"ffmpeg nao conseguiu separar a fatia {start:.0f}s-{end:.0f}s (codigo {result.returncode}). "
+            "O detalhe tecnico esta no log desta sessao."
+        )
+    return out_path
 
 
 def convert_to_wav16k(source_path: Path, out_dir: Path) -> Path:

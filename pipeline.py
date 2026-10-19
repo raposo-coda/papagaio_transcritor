@@ -10,9 +10,28 @@ from pathlib import Path
 
 try:
     from . import local_client
-    from .config import MODE_LOCAL
-    from .converter import check_ffmpeg, convert_to_mp4, convert_to_opus, convert_to_wav16k
-    from .gemini_client import generate_summary, transcribe_path, validate_environment
+    from .config import (
+        GEMINI_SLICE_SEARCH_SECONDS,
+        GEMINI_SLICE_SECONDS,
+        GEMINI_SLICE_THRESHOLD_SECONDS,
+        MODE_LOCAL,
+    )
+    from .converter import (
+        check_ffmpeg,
+        convert_to_mp4,
+        convert_to_opus,
+        convert_to_wav16k,
+        extract_slice,
+        plan_slices,
+        probe_duration,
+    )
+    from .gemini_client import (
+        SLICE_REQUEST_TIMEOUT_SECONDS,
+        generate_summary,
+        slice_context,
+        transcribe_path,
+        validate_environment,
+    )
     from .logger import log
     from .models import NormalizedTranscriptResult, PipelineRequest
     from .utils import (
@@ -28,9 +47,28 @@ try:
     )
 except ImportError:
     import local_client  # type: ignore
-    from config import MODE_LOCAL  # type: ignore
-    from converter import check_ffmpeg, convert_to_mp4, convert_to_opus, convert_to_wav16k  # type: ignore
-    from gemini_client import generate_summary, transcribe_path, validate_environment  # type: ignore
+    from config import (  # type: ignore
+        GEMINI_SLICE_SEARCH_SECONDS,
+        GEMINI_SLICE_SECONDS,
+        GEMINI_SLICE_THRESHOLD_SECONDS,
+        MODE_LOCAL,
+    )
+    from converter import (  # type: ignore
+        check_ffmpeg,
+        convert_to_mp4,
+        convert_to_opus,
+        convert_to_wav16k,
+        extract_slice,
+        plan_slices,
+        probe_duration,
+    )
+    from gemini_client import (  # type: ignore
+        SLICE_REQUEST_TIMEOUT_SECONDS,
+        generate_summary,
+        slice_context,
+        transcribe_path,
+        validate_environment,
+    )
     from logger import log  # type: ignore
     from models import NormalizedTranscriptResult, PipelineRequest  # type: ignore
     from utils import (  # type: ignore
@@ -255,12 +293,116 @@ def _validate_runtime(request: PipelineRequest):
         raise RuntimeError("\n".join(errors))
 
 
+def _slice_cache_prefix(cache_key: str) -> str:
+    return f"{cache_key}:fatia:"
+
+
+def _fit_to_slice(parcial: NormalizedTranscriptResult, inicio: float, fim: float) -> float:
+    """
+    Encolhe os tempos de uma fatia que passaram do fim dela.
+
+    O Gemini as vezes estica os tempos ao longo da fatia (numa de 12,6 min a
+    ultima fala veio em 20,6 min). O texto vem certo, so a escala do relogio
+    erra, entao a correcao e proporcional: a ultima fala passa a terminar no fim
+    da fatia. Devolve o fator aplicado (1.0 quando nada mudou).
+    """
+    inicio_ms = int(inicio * 1000)
+    duracao_ms = int((fim - inicio) * 1000)
+    maior_fim = max((item.end_ms - inicio_ms for item in parcial.utterances), default=0)
+    if maior_fim <= duracao_ms:
+        return 1.0
+    fator = duracao_ms / maior_fim
+    for item in parcial.utterances:
+        item.start_ms = inicio_ms + int((item.start_ms - inicio_ms) * fator)
+        item.end_ms = inicio_ms + int((item.end_ms - inicio_ms) * fator)
+    return fator
+
+
+def _transcribe_gemini_in_slices(
+    converted_path: Path,
+    file_path: Path,
+    duration: float,
+    request: PipelineRequest,
+    cache: dict,
+    cache_key: str,
+    session_dir: Path,
+    tmpdir: Path,
+) -> NormalizedTranscriptResult:
+    """
+    Transcreve um arquivo longo em fatias, uma chamada ao Gemini por fatia.
+
+    Cada fatia pronta vai para o cache na hora. Se uma fatia falhar de vez, o job
+    para, mas rodar de novo com o mesmo titulo reaproveita as que ja voltaram e
+    so pede o que falta.
+    """
+    # Planeja pelo original: o mp4 recodificado pode variar entre execucoes, o
+    # original nao, e e isso que mantem as chaves do cache das fatias.
+    fatias = plan_slices(file_path, duration, GEMINI_SLICE_SECONDS, GEMINI_SLICE_SEARCH_SECONDS)
+    log.info(f"  [fatias] {fmt_time(duration)} de audio em {len(fatias)} fatia(s) de ~{GEMINI_SLICE_SECONDS // 60} min")
+
+    prefixo = _slice_cache_prefix(cache_key)
+    utterances = []
+    language_code = ""
+    model = ""
+    for numero, (inicio, fim) in enumerate(fatias, start=1):
+        rotulo = f"[{numero}/{len(fatias)}] {fmt_time(inicio)}-{fmt_time(fim)}"
+        chave = f"{prefixo}{inicio:.2f}-{fim:.2f}"
+        registro = cache.get(chave)
+        if registro:
+            parcial = transcript_from_cache(registro, file_path)
+            log.ok(f"  [fatias] {rotulo}: reaproveitada do cache")
+        else:
+            log.info(f"  [fatias] {rotulo}: transcrevendo")
+            fatia_path = extract_slice(converted_path, inicio, fim, tmpdir / f"{converted_path.stem}_fatia{numero:02d}.m4a")
+            try:
+                parcial = transcribe_path(
+                    fatia_path,
+                    request.lang_code,
+                    request.gemini,
+                    mime_type="audio/mp4",
+                    offset_seconds=inicio,
+                    previous_context=slice_context(utterances),
+                    timeout_seconds=SLICE_REQUEST_TIMEOUT_SECONDS,
+                )
+            except Exception as exc:
+                prontas = sum(1 for key in cache if key.startswith(prefixo))
+                raise RuntimeError(
+                    f"A fatia {rotulo} falhou: {exc} "
+                    f"{prontas} de {len(fatias)} fatia(s) ficaram salvas; rode de novo com o mesmo "
+                    "titulo para continuar de onde parou."
+                ) from exc
+            finally:
+                fatia_path.unlink(missing_ok=True)
+            fator = _fit_to_slice(parcial, inicio, fim)
+            if fator < 1.0:
+                log.warning(f"  [fatias] {rotulo}: tempos passaram do fim da fatia; reescalados por {fator:.2f}")
+            cache[chave] = transcript_to_cache(parcial)
+            save_cache(session_dir, cache)
+
+        utterances.extend(parcial.utterances)
+        language_code = language_code or parcial.language_code
+        model = model or parcial.model
+
+    return NormalizedTranscriptResult(
+        source_path=file_path,
+        provider_id="gemini",
+        provider_label="Gemini",
+        model=model or request.gemini.transcription_model,
+        text="\n".join(item.text for item in utterances if item.text),
+        audio_duration_seconds=duration,
+        language_code=language_code or request.lang_code,
+        utterances=utterances,
+        raw_metadata={"fatias": len(fatias)},
+    )
+
+
 def _process_file(
     file_path: Path,
     idx: int,
     total: int,
     request: PipelineRequest,
     cache: dict,
+    session_dir: Path,
     tmpdir: Path,
 ) -> NormalizedTranscriptResult:
     log.info(f"\n{'=' * 50}")
@@ -281,7 +423,13 @@ def _process_file(
         transcript = local_client.transcribe_path(converted_path, request.lang_code, request.local)
     else:
         converted_path, mime_type = convert_to_mp4(file_path, tmpdir)
-        transcript = transcribe_path(converted_path, request.lang_code, request.gemini, mime_type=mime_type)
+        duration = probe_duration(converted_path)
+        if duration > GEMINI_SLICE_THRESHOLD_SECONDS:
+            transcript = _transcribe_gemini_in_slices(
+                converted_path, file_path, duration, request, cache, cache_key, session_dir, tmpdir
+            )
+        else:
+            transcript = transcribe_path(converted_path, request.lang_code, request.gemini, mime_type=mime_type)
 
     transcript.source_path = file_path
     return transcript
@@ -347,7 +495,9 @@ def run_pipeline(request: PipelineRequest, on_done, on_error):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             for index, file_path in enumerate(request.file_paths, start=1):
-                transcript = _process_file(file_path, index, len(request.file_paths), request, cache, Path(tmpdir))
+                transcript = _process_file(
+                    file_path, index, len(request.file_paths), request, cache, session_dir, Path(tmpdir)
+                )
                 transcripts.append(transcript)
 
                 md_path = session_dir / f"{file_path.stem}.md"
@@ -358,6 +508,9 @@ def run_pipeline(request: PipelineRequest, on_done, on_error):
                 provider, modelo = _cache_identity(request)
                 cache_key = build_cache_key(file_path, modelo, provider=provider)
                 cache[cache_key] = transcript_to_cache(transcript)
+                # Com o arquivo inteiro no cache, as fatias dele nao servem mais.
+                for chave in [key for key in cache if key.startswith(_slice_cache_prefix(cache_key))]:
+                    del cache[chave]
                 save_cache(session_dir, cache)
 
         log.info(f"\n{'=' * 50}")

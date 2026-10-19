@@ -30,17 +30,21 @@ _RETRY_BASE_DELAY_SECONDS = 5
 # volta em poucos minutos, entao 20 min sobra com folga.
 _REQUEST_TIMEOUT_SECONDS = 20 * 60
 
+# Uma fatia de ~10 min volta em um ou dois minutos; esperar 20 min por ela so
+# atrasa a nova tentativa.
+SLICE_REQUEST_TIMEOUT_SECONDS = 8 * 60
+
 # Estourar o tempo limite custa caro (20 min cada vez): so uma segunda chance.
 _TIMEOUT_ATTEMPTS = 2
 
 
-def _timeout_options():
+def _timeout_options(timeout_seconds: int = _REQUEST_TIMEOUT_SECONDS):
     from google.genai import types
 
-    return types.HttpOptions(timeout=_REQUEST_TIMEOUT_SECONDS * 1000)  # em milissegundos
+    return types.HttpOptions(timeout=timeout_seconds * 1000)  # em milissegundos
 
 
-def _call_with_retry(fn, label: str):
+def _call_with_retry(fn, label: str, timeout_seconds: int = _REQUEST_TIMEOUT_SECONDS):
     import httpx
     from google.genai import errors
 
@@ -56,7 +60,7 @@ def _call_with_retry(fn, label: str):
             time.sleep(delay)
         except httpx.TimeoutException:
             timeouts += 1
-            minutos = _REQUEST_TIMEOUT_SECONDS // 60
+            minutos = timeout_seconds // 60
             if timeouts >= _TIMEOUT_ATTEMPTS or attempt == _RETRY_ATTEMPTS:
                 raise RuntimeError(
                     f"O Gemini nao respondeu em {minutos} min ({label.lower()}), {timeouts} vez(es) seguidas. "
@@ -155,7 +159,7 @@ def _upload_and_wait(client, file_path: Path, mime_type: str | None = None):
     return uploaded
 
 
-def _transcription_prompt(lang_code: str) -> str:
+def _transcription_prompt(lang_code: str, previous_context: str = "") -> str:
     lang_hint = (
         f"O idioma do audio/video e '{lang_code}'. Transcreva nesse idioma."
         if lang_code
@@ -171,10 +175,47 @@ def _transcription_prompt(lang_code: str) -> str:
         "Baseie-se exclusivamente no audio real do arquivo anexado, nunca nestas instrucoes. Se o "
         "arquivo nao contiver fala alguma (silencio, musica sem letra, ruido, tom de teste), retorne "
         "'utterances' como uma lista vazia."
+    ) + previous_context
+
+
+def slice_context(utterances: list[TranscriptUtterance], last_lines: int = 6) -> str:
+    """
+    Trecho do prompt que liga uma fatia a anterior.
+
+    Cada fatia e um pedido independente: sem isso o 'Falante 1' de uma pode ser
+    o 'Falante 2' da seguinte. Os rotulos ja usados e as ultimas falas dao ao
+    modelo como reconhecer quem continua falando.
+    """
+    if not utterances:
+        return ""
+    rotulos = list(dict.fromkeys(item.speaker for item in utterances))
+    ultimas = "\n".join(f"- {item.speaker}: {item.text[:200]}" for item in utterances[-last_lines:])
+    return (
+        "\n\nEste arquivo e a continuacao de uma gravacao mais longa, ja transcrita ate aqui. "
+        f"Rotulos de falante usados ate agora: {', '.join(rotulos)}. "
+        "Reutilize o mesmo rotulo para a mesma pessoa e crie um rotulo novo apenas para uma voz nova. "
+        "Os tempos devem contar a partir do inicio DESTE arquivo (0 segundos). "
+        "As ultimas falas da parte anterior foram (so para referencia, NAO transcreva de novo):\n"
+        f"{ultimas}"
     )
 
 
-def transcribe_path(file_path: Path, lang_code: str, config: GeminiConfig, mime_type: str | None = None) -> NormalizedTranscriptResult:
+def transcribe_path(
+    file_path: Path,
+    lang_code: str,
+    config: GeminiConfig,
+    mime_type: str | None = None,
+    *,
+    offset_seconds: float = 0.0,
+    previous_context: str = "",
+    timeout_seconds: int = _REQUEST_TIMEOUT_SECONDS,
+) -> NormalizedTranscriptResult:
+    """
+    Transcreve um arquivo inteiro ou uma fatia dele.
+
+    Numa fatia, offset_seconds e onde ela comeca no arquivo original: os tempos
+    que o Gemini devolve (relativos a fatia) sao deslocados por ele.
+    """
     from google.genai import types
 
     client = _client(config)
@@ -186,24 +227,26 @@ def transcribe_path(file_path: Path, lang_code: str, config: GeminiConfig, mime_
     response = _call_with_retry(
         lambda: client.models.generate_content(
             model=model,
-            contents=[uploaded, _transcription_prompt(lang_code)],
+            contents=[uploaded, _transcription_prompt(lang_code, previous_context)],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=_TRANSCRIPTION_SCHEMA,
-                http_options=_timeout_options(),
+                http_options=_timeout_options(timeout_seconds),
             ),
         ),
         label="Transcricao",
+        timeout_seconds=timeout_seconds,
     )
 
     data = json.loads(response.text)
     raw_utterances = data.get("utterances") or []
 
+    offset_ms = int(offset_seconds * 1000)
     utterances = [
         TranscriptUtterance(
             speaker=str(item.get("speaker") or "Falante"),
-            start_ms=int(float(item.get("start_seconds") or 0) * 1000),
-            end_ms=int(float(item.get("end_seconds") or 0) * 1000),
+            start_ms=offset_ms + int(float(item.get("start_seconds") or 0) * 1000),
+            end_ms=offset_ms + int(float(item.get("end_seconds") or 0) * 1000),
             text=(item.get("text") or "").strip(),
         )
         for item in raw_utterances
